@@ -2,3 +2,5 @@
 min_precision: 0.98
 min_recall: 0.95
 f1_must_not_drop: true
+min_new_labels: 50            # nightly retrain skips unless this many new review decisions exist
+min_holdout_labels: 10        # real-label holdout only gates once it has this many pairs

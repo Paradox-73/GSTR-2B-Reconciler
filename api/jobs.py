@@ -13,28 +13,60 @@ from api import logs
 from api.db import SessionLocal, engine
 from api.settings import env, get_settings
 from api.tables import Client, InvoiceRow, MatchResult, Run
-from matcher import config
+from matcher import config, registry
 from matcher.engine import reconcile
 from matcher.model import DEFAULT_PATH, MatchModel
 from matcher.models import BOOKS, GSTR2B, Invoice
 
 QUEUE = "reconcile"
 EXACT_ONLY = "exact-only"
-_model = None
+
+
+class ModelHolder:
+    """The model workers score with. refresh() swaps in a new production model from MLflow;
+    a reference swap is atomic, so a job in flight keeps the model it started with."""
+
+    def __init__(self):
+        self.model = None
+        self.loaded = False
+        self.registry_version = None
+
+    def get(self):
+        if not self.loaded:
+            self.refresh()
+        return self.model
+
+    def refresh(self) -> None:
+        if registry.enabled():
+            try:
+                mv = registry.production_version()
+                if mv is not None and mv.version != self.registry_version:
+                    new = registry.load_version(mv)
+                    old = self.model.version if self.model else None
+                    self.model, self.registry_version, self.loaded = new, mv.version, True
+                    logs.log("model_swapped", from_version=old, model_version=new.version)
+                    return
+            except Exception:  # registry down: keep serving the model we have
+                logs.log("model_refresh_failed", logging.WARNING, exc_info=True)
+        if not self.loaded:
+            self._load_bundled()
+
+    def _load_bundled(self) -> None:
+        path = env("MODEL_PATH") or DEFAULT_PATH
+        try:
+            self.model = MatchModel.load(path)
+            logs.log("model_loaded", model_version=self.model.version, source="bundled")
+        except (OSError, ValueError, xgb.core.XGBoostError):
+            logs.log("model_missing", logging.WARNING, exc_info=True)
+            self.model = None  # runs record model_version=exact-only, so this shows in the UI
+        self.loaded = True
+
+
+models = ModelHolder()
 
 
 def get_model():
-    """Loaded once per worker process. MLflow polling + hot swap replaces this in #23."""
-    global _model
-    if _model is None:
-        path = env("MODEL_PATH") or DEFAULT_PATH
-        try:
-            _model = MatchModel.load(path)
-            logs.log("model_loaded", model_version=_model.version)
-        except (OSError, ValueError, xgb.core.XGBoostError):
-            logs.log("model_missing", logging.WARNING, exc_info=True)
-            _model = False  # runs record model_version=exact-only, so this shows in the UI
-    return _model or None
+    return models.get()
 
 
 def enqueue(run_id: uuid.UUID, background: BackgroundTasks) -> None:
