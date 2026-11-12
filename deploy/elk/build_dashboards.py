@@ -200,7 +200,8 @@ def main() -> None:
     for did, (title, panels) in DASHBOARDS.items():
         assert set(panels) <= known, set(panels) - known
         objects.append(dashboard(did, title, panels))
-    OUT.write_text("".join(json.dumps(o) + "\n" for o in objects), encoding="utf-8")
+    OUT.write_text("".join(json.dumps(o) + "\n" for o in objects), encoding="utf-8",
+                   newline="\n")
     print(f"wrote {len(objects)} objects to {OUT}")
 
 
