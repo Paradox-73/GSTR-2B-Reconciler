@@ -1,0 +1,51 @@
+{
+ "version": "v1",
+ "features": [
+  "inv_lev_ratio",
+  "inv_jaro_winkler",
+  "inv_numeric_equal",
+  "inv_token_overlap",
+  "inv_len_diff",
+  "gstin_equal",
+  "pan_equal",
+  "gstin_edit_distance",
+  "date_diff_days",
+  "same_month",
+  "taxable_abs_diff",
+  "taxable_rel_diff",
+  "tax_abs_diff",
+  "tax_rel_diff",
+  "total_abs_diff",
+  "total_rel_diff",
+  "tax_head_mismatch"
+ ],
+ "params": {
+  "objective": "binary:logistic",
+  "eval_metric": "logloss",
+  "max_depth": 4,
+  "eta": 0.1,
+  "subsample": 0.9,
+  "colsample_bytree": 0.9,
+  "min_child_weight": 2,
+  "seed": 0,
+  "nthread": 1
+ },
+ "rounds": 200,
+ "trained_at": "2026-11-12T20:34:41+00:00",
+ "git_sha": "5d137ff",
+ "train_rows": 8898,
+ "train_positives": 2093,
+ "data_hash": "42e8111669e59398",
+ "train_seeds": [
+  100,
+  159
+ ],
+ "golden_metrics": {
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "model_pairs": 40,
+  "hard_pairs": 40,
+  "auto_matched": 40
+ }
+}

@@ -7,21 +7,48 @@ import pytest
 
 from matcher import config
 from matcher.engine import reconcile
+from matcher.model import MatchModel
 from matcher.models import Category
 from matcher.parsers import load_books, load_gstr2b
 
 GOLDEN = "tests/golden/"
-# Pairs only the ML model can find (#11). Until then the exact pass leaves them unmatched.
-NEEDS_MODEL = {Category.PROBABLE.value}
+NEEDS_MODEL = {Category.PROBABLE.value}  # pairs only the model can find
+
+
+def _run(model):
+    cfg = config.load()
+    books = load_books(GOLDEN + "books.csv", json.load(open(GOLDEN + "mapping.json")))
+    g2b = load_gstr2b(GOLDEN + "gstr2b.json")
+    results = reconcile(books, g2b, cfg["amount_tolerance"], model, cfg["probable_threshold"],
+                        cfg["review_threshold"], cfg["candidate_value_pct"],
+                        cfg["candidate_date_days"])
+    return results, list(csv.DictReader(open(GOLDEN + "truth.csv")))
 
 
 @pytest.fixture(scope="module")
 def run():
-    books = load_books(GOLDEN + "books.csv", json.load(open(GOLDEN + "mapping.json")))
-    g2b = load_gstr2b(GOLDEN + "gstr2b.json")
-    results = reconcile(books, g2b, config.load()["amount_tolerance"])
-    truth = list(csv.DictReader(open(GOLDEN + "truth.csv")))
-    return results, truth
+    """Exact pass only: everything except the model's cases must already be right."""
+    return _run(None)
+
+
+@pytest.fixture(scope="module")
+def full_run():
+    return _run(MatchModel.load())
+
+
+def test_full_engine_matches_truth_exactly(full_run):
+    results, truth = full_run
+    by_pair = {(r.books_id or "", r.gstr2b_id or ""): r for r in results}
+    wrong = []
+    for t in truth:
+        r = by_pair.get((t["books_id"], t["gstr2b_id"]))
+        got = (r.category.value, "|".join(r.reasons)) if r else ("<not paired>", "")
+        if got != (t["expected_category"], t["expected_reasons"]):
+            wrong.append(f"{t['books_id']}/{t['gstr2b_id']} {t['error']}: "
+                         f"expected {t['expected_category']} {t['expected_reasons']}, got {got}")
+    assert not wrong, f"{len(wrong)} wrong:\n" + "\n".join(wrong[:20])
+    assert Counter(r.category.value for r in results) == Counter(
+        t["expected_category"] for t in truth)
 
 
 def test_every_invoice_lands_exactly_once(run):

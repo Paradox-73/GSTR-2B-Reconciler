@@ -5,18 +5,36 @@ import uuid
 from collections import Counter
 from datetime import UTC, datetime
 
+import xgboost as xgb
 from fastapi import BackgroundTasks
 from sqlalchemy import select
 
 from api import logs
 from api.db import SessionLocal, engine
-from api.settings import get_settings
+from api.settings import env, get_settings
 from api.tables import Client, InvoiceRow, MatchResult, Run
+from matcher import config
 from matcher.engine import reconcile
+from matcher.model import DEFAULT_PATH, MatchModel
 from matcher.models import BOOKS, GSTR2B, Invoice
 
-MODEL_VERSION = "exact-v1"  # replaced by the MLflow model version in #11 / #23
 QUEUE = "reconcile"
+EXACT_ONLY = "exact-only"
+_model = None
+
+
+def get_model():
+    """Loaded once per worker process. MLflow polling + hot swap replaces this in #23."""
+    global _model
+    if _model is None:
+        path = env("MODEL_PATH") or DEFAULT_PATH
+        try:
+            _model = MatchModel.load(path)
+            logs.log("model_loaded", model_version=_model.version)
+        except (OSError, ValueError, xgb.core.XGBoostError):
+            logs.log("model_missing", logging.WARNING, exc_info=True)
+            _model = False  # runs record model_version=exact-only, so this shows in the UI
+    return _model or None
 
 
 def enqueue(run_id: uuid.UUID, background: BackgroundTasks) -> None:
@@ -56,7 +74,11 @@ def run_reconciliation(run_id: str) -> None:
             books = [to_invoice(r) for r in rows if r.source == BOOKS]
             g2b = [to_invoice(r) for r in rows if r.source == GSTR2B]
             tolerance = db.get(Client, run.client_id).tolerance
-            results = reconcile(books, g2b, tolerance)
+            model, cfg = get_model(), config.load()
+            version = model.version if model else EXACT_ONLY
+            results = reconcile(books, g2b, tolerance, model, cfg["probable_threshold"],
+                                cfg["review_threshold"], cfg["candidate_value_pct"],
+                                cfg["candidate_date_days"])
             db.add_all(MatchResult(
                 run_id=run.id, category=res.category.value, score=res.score,
                 reason_codes=[r.value for r in res.reasons],
@@ -64,16 +86,16 @@ def run_reconciliation(run_id: str) -> None:
                 gstr2b_invoice_id=by_ext.get((GSTR2B, res.gstr2b_id))) for res in results)
             counts = dict(Counter(res.category.value for res in results))
             run.summary = {"counts": counts, "books": len(books), "gstr2b": len(g2b)}
-            run.status, run.model_version = "done", MODEL_VERSION
+            run.status, run.model_version = "done", version
         except Exception as e:
             db.rollback()
             run = db.get(Run, uuid.UUID(run_id))
             run.status, run.error = "failed", type(e).__name__  # no message: may contain data
-            counts = None
+            counts, version = None, None
             logs.log("run_failed", logging.ERROR, exc_info=True, error_type=type(e).__name__)
         run.finished_at = datetime.now(UTC)
         db.commit()
     if counts is not None:
         logs.log("run_completed", duration_ms=round((time.perf_counter() - started) * 1000),
-                 model_version=MODEL_VERSION, counts=counts,
+                 model_version=version, counts=counts,
                  invoices=len(books) + len(g2b))
