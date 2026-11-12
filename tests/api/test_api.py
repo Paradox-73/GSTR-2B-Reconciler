@@ -124,3 +124,14 @@ def test_2b_for_wrong_client_rejected(client, auth, tmp_path):
                     data={"kind": "gstr2b", "period": "2025-04"},
                     files={"file": ("2b.json", json.dumps(ds.gstr2b).encode())})
     assert r.status_code == 422 and "not this client" in r.text
+
+
+def test_worker_settings_need_no_jwt(monkeypatch):
+    import pytest
+
+    from api.settings import Settings
+
+    monkeypatch.delenv("JWT_SECRET")
+    s = Settings()  # what the worker does
+    with pytest.raises(RuntimeError):
+        s.check_api()

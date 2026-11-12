@@ -30,7 +30,7 @@ def ensure_admin() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logs.setup()
-    get_settings()  # fail fast on bad config
+    get_settings().check_api()  # fail fast on bad config
     engine()
     try:
         ensure_admin()

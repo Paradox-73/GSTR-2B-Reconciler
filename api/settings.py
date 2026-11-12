@@ -21,6 +21,9 @@ class Settings:
         self.admin_password = env("ADMIN_PASSWORD")
         self.upload_dir = env("UPLOAD_DIR", "./data/uploads")
         self.max_upload_mb = int(env("MAX_UPLOAD_MB", "20"))
+
+    def check_api(self) -> None:
+        """Only the api signs tokens; the worker and migrations run without a JWT secret."""
         if not self.jwt_secret or len(self.jwt_secret) < 32:
             raise RuntimeError("JWT_SECRET must be set and at least 32 characters")
 

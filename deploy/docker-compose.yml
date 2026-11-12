@@ -1,0 +1,66 @@
+# Local full stack. Run from the repo root:
+#   cp deploy/.env.example deploy/.env   (then change the values)
+#   docker compose -f deploy/docker-compose.yml up --build
+name: gstr2b
+
+x-backend-env: &backend-env
+  DATABASE_URL: postgresql+psycopg://gstr2b:${POSTGRES_PASSWORD:?set it in deploy/.env}@postgres:5432/gstr2b
+  REDIS_URL: redis://redis:6379/0
+  LOG_LEVEL: INFO
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: gstr2b
+      POSTGRES_DB: gstr2b
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gstr2b"]
+      interval: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      retries: 20
+
+  migrate:
+    build: {context: .., target: api}
+    image: gstr2b-api:dev
+    command: ["alembic", "upgrade", "head"]
+    environment: *backend-env
+    depends_on:
+      postgres: {condition: service_healthy}
+
+  api:
+    image: gstr2b-api:dev
+    environment:
+      <<: *backend-env
+      JWT_SECRET: ${JWT_SECRET:?set it in deploy/.env}
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+    volumes: [uploads:/data/uploads]
+    ports: ["8000:8000"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/readyz')"]
+      interval: 5s
+      retries: 20
+
+  worker:
+    build: {context: .., target: worker}
+    image: gstr2b-worker:dev
+    environment: *backend-env
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+
+volumes:
+  pgdata:
+  uploads:
