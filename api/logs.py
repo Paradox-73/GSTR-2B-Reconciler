@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import sys
+import traceback
 from contextvars import ContextVar
 from datetime import UTC, datetime
 
@@ -21,7 +22,10 @@ class JsonFormatter(logging.Formatter):
                 line[key] = var.get()
         line.update(getattr(record, "fields", {}))
         if record.exc_info:
-            line["error"] = self.formatException(record.exc_info)
+            # Frames and type only: exception messages can carry invoice data (DESIGN.md 12)
+            etype, _, tb = record.exc_info
+            line["error_type"] = etype.__name__ if etype else None
+            line["error"] = "".join(traceback.format_tb(tb))
         return json.dumps(line, default=str)
 
 

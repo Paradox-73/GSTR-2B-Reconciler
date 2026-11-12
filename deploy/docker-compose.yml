@@ -37,7 +37,7 @@ services:
     environment:
       VAULT_DEV_ROOT_TOKEN_ID: ${VAULT_TOKEN:?set it in deploy/.env}
       VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
-    ports: ["8200:8200"]
+    ports: ["127.0.0.1:8200:8200"]
     healthcheck:
       test: ["CMD", "vault", "status", "-address=http://127.0.0.1:8200"]
       interval: 3s
@@ -62,7 +62,7 @@ services:
       --artifacts-destination /mlflow/artifacts --serve-artifacts
       --allowed-hosts "mlflow:5000,localhost:5000,127.0.0.1:5000"
     volumes: [mlflow:/mlflow]
-    ports: ["5000:5000"]
+    ports: ["127.0.0.1:5000:5000"]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
       interval: 5s
@@ -106,7 +106,7 @@ services:
       VAULT_ADDR: http://vault:8200
       VAULT_TOKEN: ${VAULT_TOKEN}
     volumes: [uploads:/data/uploads]
-    ports: ["8000:8000"]
+    ports: ["127.0.0.1:8000:8000"]
     depends_on:
       migrate: {condition: service_completed_successfully}
       redis: {condition: service_healthy}
@@ -132,7 +132,7 @@ services:
     image: gstr2b-frontend:dev
     environment:
       API_UPSTREAM: http://api:8000
-    ports: ["${FRONTEND_PORT:-8080}:8080"]  # set FRONTEND_PORT in deploy/.env if 8080 is taken
+    ports: ["127.0.0.1:${FRONTEND_PORT:-8080}:8080"]  # set FRONTEND_PORT in deploy/.env if 8080 is taken
     depends_on:
       api: {condition: service_healthy}
 

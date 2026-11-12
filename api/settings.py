@@ -27,6 +27,10 @@ class Settings:
         """Only the api signs tokens; the worker and migrations run without a JWT secret."""
         if not self.jwt_secret or len(self.jwt_secret) < 32:
             raise RuntimeError("JWT_SECRET must be set and at least 32 characters")
+        for name, value in (("JWT_SECRET", self.jwt_secret),
+                            ("ADMIN_PASSWORD", self.admin_password)):
+            if value and "CHANGE_ME" in value:
+                raise RuntimeError(f"{name} still has the example value; set a real one")
 
 
 @lru_cache

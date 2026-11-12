@@ -20,6 +20,14 @@ class ParseError(ValueError):
     pass
 
 
+def _gstin(raw) -> str:
+    """Cleaned but not checksum-validated: a typo'd GSTIN is a case the matcher handles."""
+    g = gst.clean(str(raw or ""))
+    if len(g) != 15:
+        raise ValueError("supplier GSTIN must be 15 characters")
+    return g
+
+
 def _unwrap(doc: dict) -> dict:
     root = doc.get("data", doc)
     # GSP APIs wrap the portal file in one more "data"
@@ -46,7 +54,7 @@ def parse_gstr2b(doc: dict) -> list[Invoice]:
                 out.append(Invoice(
                     id=f"G{len(out) + 1}",
                     source=GSTR2B,
-                    supplier_gstin=gst.clean(supplier["ctin"]),
+                    supplier_gstin=_gstin(supplier["ctin"]),
                     supplier_name=supplier.get("trdnm", ""),
                     inv_no_raw=str(inv["inum"]),
                     inv_date=to_date(inv["dt"]),
@@ -96,7 +104,7 @@ def parse_books(df: pd.DataFrame, mapping: dict[str, str]) -> list[Invoice]:
             out.append(Invoice(
                 id=f"B{i}",
                 source=BOOKS,
-                supplier_gstin=gst.clean(str(col(row, "supplier_gstin"))),
+                supplier_gstin=_gstin(col(row, "supplier_gstin")),
                 supplier_name=str(col(row, "supplier_name") or ""),
                 inv_no_raw=str(col(row, "invoice_no")),
                 inv_date=to_date(col(row, "invoice_date")),
