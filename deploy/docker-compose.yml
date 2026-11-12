@@ -61,6 +61,15 @@ services:
       migrate: {condition: service_completed_successfully}
       redis: {condition: service_healthy}
 
+  frontend:
+    build: {context: ../frontend}
+    image: gstr2b-frontend:dev
+    environment:
+      API_UPSTREAM: http://api:8000
+    ports: ["8080:8080"]
+    depends_on:
+      api: {condition: service_healthy}
+
 volumes:
   pgdata:
   uploads:

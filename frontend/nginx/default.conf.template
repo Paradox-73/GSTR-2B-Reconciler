@@ -1,0 +1,26 @@
+server {
+    listen 8080;
+    server_name _;
+    root /usr/share/nginx/html;
+
+    gzip on;
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_min_length 1024;
+    gzip_types text/plain text/css application/javascript application/json image/svg+xml;
+
+    # /api/ is either proxied to API_UPSTREAM or answered with 404 (see 40-api-proxy.sh)
+    include /etc/nginx/conf.d/api-proxy.locations;
+
+    # Vite puts a content hash in every file name under /assets, so they can be cached forever
+    location /assets/ {
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        try_files $uri =404;
+    }
+
+    # index.html is revalidated on every load, otherwise a new deploy only shows after a hard refresh
+    location / {
+        add_header Cache-Control "no-cache";
+        try_files $uri /index.html;
+    }
+}

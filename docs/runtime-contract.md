@@ -12,7 +12,7 @@ All images run as non-root uid `10001`. Tags: `:<git-sha>` and `:latest`. Docker
 |---|---|---|---|---|
 | `gstr2b-api` | `Dockerfile` target `api` | `uvicorn api.main:app --host 0.0.0.0 --port 8000` | 8000 | liveness `GET /healthz` (no deps), readiness `GET /readyz` (checks DB + Redis) |
 | `gstr2b-worker` | `Dockerfile` target `worker` | `rq worker --url $REDIS_URL reconcile` | none | liveness: process alive |
-| `gstr2b-frontend` | `frontend/Dockerfile` | nginx | 8080 | `GET /` |
+| `gstr2b-frontend` | `frontend/Dockerfile` | nginx (`nginxinc/nginx-unprivileged`, runs as uid `101`, not `10001`); env `API_UPSTREAM` (e.g. `http://api:8000`) makes it proxy `/api/`, leave empty when an Ingress routes `/api` | 8080 | `GET /` |
 | `gstr2b-trainer` | `Dockerfile` target `trainer` | `python -m trainer` (week 4) | none | CronJob |
 
 Database migrations: the `gstr2b-api` image with command `alembic upgrade head`. Runs as a K8s Job
