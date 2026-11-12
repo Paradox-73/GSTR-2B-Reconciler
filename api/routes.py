@@ -143,7 +143,11 @@ async def upload(client_id: uuid.UUID, kind: str = Form(pattern="^(gstr2b|books)
     except ParseError as e:
         raise HTTPException(422, str(e)) from e
 
-    path, sha = storage.save(c.id, data, suffix)
+    try:
+        path, sha = storage.save(c.id, data, suffix)
+    except OSError as e:  # Vault unreachable: refuse rather than write plaintext to disk
+        logs.log("upload_store_failed", 40, error_type=type(e).__name__)
+        raise HTTPException(503, "file storage is unavailable, try again shortly") from e
     up = Upload(client_id=c.id, period=period, kind=kind, original_name=file.filename or "",
                 file_path=path, sha256=sha, invoice_count=len(invoices))
     db.add(up)
