@@ -89,6 +89,24 @@ def list_clients(user: User = Depends(current_user), db: Session = Depends(get_d
     return [client_out(c) for c in rows]
 
 
+@router.get("/clients/{client_id}")
+def get_client(client_id: uuid.UUID, user: User = Depends(current_user),
+               db: Session = Depends(get_db)):
+    return client_out(own_client(client_id, user, db))
+
+
+@router.get("/clients/{client_id}/uploads")
+def list_uploads(client_id: uuid.UUID, period: str | None = None,
+                 user: User = Depends(current_user), db: Session = Depends(get_db)):
+    own_client(client_id, user, db)
+    q = select(Upload).where(Upload.client_id == client_id)
+    if period:
+        q = q.where(Upload.period == period)
+    return [{"id": u.id, "kind": u.kind, "period": u.period, "original_name": u.original_name,
+             "invoice_count": u.invoice_count, "uploaded_at": u.uploaded_at}
+            for u in db.scalars(q.order_by(Upload.uploaded_at.desc()))]
+
+
 @router.post("/clients", status_code=201)
 def create_client(body: ClientIn, user: User = Depends(current_user),
                   db: Session = Depends(get_db)):
@@ -185,10 +203,16 @@ def _parse_books(data: bytes, suffix: str, c: Client):
         raise ParseError("purchase register must be .xlsx or .csv")
     df = (pd.read_csv(io.BytesIO(data), dtype=object, keep_default_na=False) if suffix == ".csv"
           else pd.read_excel(io.BytesIO(data), dtype=object))
+    columns = [str(x) for x in df.columns]
+    # 409 + the file's headers = the UI shows the mapping screen, then uploads again
     if not c.column_mapping:
-        # The UI shows the mapping screen with these headers, then uploads again
         raise HTTPException(409, {"message": "save a column mapping for this client first",
-                                  "columns": [str(x) for x in df.columns]})
+                                  "columns": columns})
+    absent = [h for h in c.column_mapping.values() if h not in df.columns]
+    if absent:
+        raise HTTPException(409, {"message": "this file's columns don't match the saved mapping "
+                                             f"(missing: {', '.join(absent)})",
+                                  "columns": columns})
     return parse_books(df, c.column_mapping)
 
 
