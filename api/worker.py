@@ -27,6 +27,7 @@ def poll(stop: threading.Event) -> None:
 
 def main() -> None:
     logs.setup()
+    logs.log("app_started", version=os.environ.get("APP_VERSION", "dev"))
     jobs.models.refresh()
     stop = threading.Event()
     threading.Thread(target=poll, args=(stop,), daemon=True, name="model-poller").start()
