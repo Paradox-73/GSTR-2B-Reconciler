@@ -1,0 +1,20 @@
+# Compose version of filebeat.yml: tails Docker's json-file logs instead of /var/log/containers.
+filebeat.inputs:
+  - type: filestream
+    id: docker-containers
+    paths:
+      - /var/lib/docker/containers/*/*.log
+    parsers:
+      - container: ~
+    processors:
+      - add_docker_metadata: ~
+      # Drop infrastructure containers by name. Not "keep only app containers": a short-lived
+      # container (trainer run) can finish before its name is looked up, and its gate_result
+      # events would be dropped with it.
+      - drop_event:
+          when:
+            regexp:
+              container.name: "^gstr2b-(elasticsearch|logstash|kibana|filebeat|postgres|redis|mlflow|vault|vault-init|migrate)-"
+
+output.logstash:
+  hosts: ["logstash:5044"]

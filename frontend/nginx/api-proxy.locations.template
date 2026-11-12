@@ -1,5 +1,9 @@
 location /api/ {
-    proxy_pass ${API_UPSTREAM};
+    # Re-resolve the api's name (Docker DNS) so a recreated api container doesn't leave us
+    # proxying to its old IP with 502s until nginx restarts.
+    resolver 127.0.0.11 valid=10s ipv6=off;
+    set $api_upstream ${API_UPSTREAM};
+    proxy_pass $api_upstream;
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;

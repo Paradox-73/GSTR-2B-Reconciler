@@ -163,3 +163,29 @@ def test_vendor_notes_and_export(client, auth):
     assert wb.sheetnames == ["Summary", "Results"]
     total = client.get(f"{V1}/runs/{run_id}", headers=auth).json()["summary"]["counts"]
     assert wb["Results"].max_row - 1 == sum(total.values())
+
+
+def test_stuck_runs_get_reaped(client, auth, app):
+    from datetime import UTC, datetime, timedelta
+
+    from api import jobs
+    from api.db import SessionLocal
+    from api.tables import Run
+
+    with SessionLocal() as db:
+        done = db.query(Run).filter(Run.status == "done").first()
+        old = datetime.now(UTC) - timedelta(minutes=30)
+        stuck = Run(client_id=done.client_id, period=done.period, status="running",
+                    books_upload_id=done.books_upload_id, gstr2b_upload_id=done.gstr2b_upload_id,
+                    started_at=old, created_at=old)
+        fresh = Run(client_id=done.client_id, period=done.period, status="running",
+                    books_upload_id=done.books_upload_id, gstr2b_upload_id=done.gstr2b_upload_id,
+                    started_at=datetime.now(UTC))
+        db.add_all([stuck, fresh])
+        db.commit()
+        ids = stuck.id, fresh.id
+    assert jobs.reap_stuck_runs() >= 1
+    with SessionLocal() as db:
+        assert db.get(Run, ids[0]).status == "failed" and db.get(Run, ids[0]).error == "WorkerLost"
+        assert db.get(Run, ids[1]).status == "running"
+        assert db.get(Run, done.id).status == "done"
