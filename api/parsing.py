@@ -6,6 +6,7 @@ Results come back as plain tuples because exceptions like HTTPException don't cr
 """
 import io
 import json
+import multiprocessing
 import zipfile
 from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
@@ -50,7 +51,9 @@ def parse_in_child(*args):
     """parse() in the pool. Raises TimeoutError or RuntimeError if the child dies or hangs."""
     global _pool
     if _pool is None:
-        _pool = ProcessPoolExecutor(max_workers=2)
+        # spawn, not fork: the api already runs threads, and forking a threaded process can
+        # deadlock the child (the rq worker did exactly that). One child keeps pod memory small.
+        _pool = ProcessPoolExecutor(max_workers=1, mp_context=multiprocessing.get_context("spawn"))
     future = _pool.submit(parse, *args)
     try:
         return future.result(timeout=TIMEOUT_SECONDS)
