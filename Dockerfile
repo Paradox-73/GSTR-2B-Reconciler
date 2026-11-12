@@ -12,6 +12,7 @@ COPY --from=deps /venv /venv
 WORKDIR /app
 COPY config/ config/
 COPY matcher/ matcher/
+COPY models/ models/
 COPY api/ api/
 COPY alembic.ini .
 USER 10001

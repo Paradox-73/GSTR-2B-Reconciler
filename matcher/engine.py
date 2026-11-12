@@ -3,6 +3,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from decimal import Decimal
 
+from matcher.candidates import candidates
 from matcher.models import Category, Invoice, Reason
 
 HEADS = ("igst", "cgst", "sgst", "cess")
@@ -38,15 +39,19 @@ def compare(b: Invoice, g: Invoice, tolerance: Decimal) -> tuple[Reason, ...]:
 AMOUNT_REASONS = {Reason.VALUE_DIFF, Reason.TAX_DIFF, Reason.TAX_HEAD_DIFF}
 
 
-def categorise(b: Invoice, g: Invoice, tolerance: Decimal, matched_as=Category.MATCHED,
+def categorise(b: Invoice, g: Invoice, tolerance: Decimal, model_category: Category | None = None,
                score: float | None = None) -> Result:
+    """model_category is set for pairs the model found: they stay probable/review even with
+    amount differences, because the CA still has to confirm it's the same invoice first."""
     reasons = compare(b, g, tolerance)
     if not g.itc_available:
         category, reasons = Category.ITC_NOT_AVAILABLE, (*reasons, Reason.ITC_INELIGIBLE)
+    elif model_category:
+        category = model_category
     elif AMOUNT_REASONS & set(reasons):
         category = Category.MISMATCH
     else:
-        category = matched_as
+        category = Category.MATCHED
     return Result(b.id, g.id, category, reasons, score)
 
 
@@ -77,7 +82,33 @@ def unmatched(left_books: list[Invoice], left_g2b: list[Invoice]) -> list[Result
     return out
 
 
-def reconcile(books: list[Invoice], g2b: list[Invoice], tolerance=Decimal("1.00")) -> list[Result]:
-    results, left_books, left_g2b = exact_pass(books, g2b, Decimal(str(tolerance)))
-    # ML pass on the leftovers goes here (#10, #11)
+def model_pass(books: list[Invoice], g2b: list[Invoice], model, tolerance: Decimal,
+               probable: float, review: float, value_pct: float, date_days: int):
+    """Scores candidate pairs, then assigns one-to-one by highest probability (DESIGN.md 8.6)."""
+    pairs = candidates(books, g2b, value_pct, date_days)
+    scored = sorted(zip(model.score(pairs), range(len(pairs)), pairs, strict=True), reverse=True)
+    used_b, used_g, results = set(), set(), []
+    for score, _, (b, g) in scored:
+        if score < review:
+            break
+        if b.id in used_b or g.id in used_g:
+            continue
+        used_b.add(b.id)
+        used_g.add(g.id)
+        category = Category.PROBABLE if score >= probable else Category.REVIEW
+        results.append(categorise(b, g, tolerance, category, round(score, 4)))
+    return (results, [b for b in books if b.id not in used_b],
+            [g for g in g2b if g.id not in used_g])
+
+
+def reconcile(books: list[Invoice], g2b: list[Invoice], tolerance=Decimal("1.00"), model=None,
+              probable: float = 0.90, review: float = 0.50, value_pct: float = 0.05,
+              date_days: int = 10) -> list[Result]:
+    """model=None runs the exact pass only."""
+    tolerance = Decimal(str(tolerance))
+    results, left_books, left_g2b = exact_pass(books, g2b, tolerance)
+    if model is not None:
+        found, left_books, left_g2b = model_pass(left_books, left_g2b, model, tolerance,
+                                                 probable, review, value_pct, date_days)
+        results += found
     return results + unmatched(left_books, left_g2b)
