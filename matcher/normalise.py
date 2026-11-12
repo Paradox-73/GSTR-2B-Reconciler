@@ -46,6 +46,8 @@ def to_date(value) -> date:
         return value.date()
     if isinstance(value, date):
         return value
+    if isinstance(value, float) and value != value:
+        raise ValueError("date is blank")
     if isinstance(value, int | float) and not isinstance(value, bool):
         return _EXCEL_EPOCH + timedelta(days=int(value))
     s = str(value or "").strip()

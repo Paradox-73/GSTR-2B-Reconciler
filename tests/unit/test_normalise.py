@@ -61,3 +61,8 @@ def test_amount(value, expected):
 def test_bad_amount():
     with pytest.raises(ValueError):
         amount("abc")
+
+
+def test_nan_date_is_an_error():
+    with pytest.raises(ValueError):
+        to_date(float("nan"))
