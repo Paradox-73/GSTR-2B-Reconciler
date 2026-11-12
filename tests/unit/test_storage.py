@@ -62,3 +62,15 @@ def test_real_vault_roundtrip(monkeypatch):
     token = vault.encrypt(blob)
     assert token.startswith(b"vault:v1:") and base64.b64encode(blob) not in token
     assert vault.decrypt(token) == blob
+
+
+def test_purge_removes_only_old_files(store):
+    import time
+
+    old, _ = storage.save("c1", b"old", ".csv")
+    new, _ = storage.save("c2", b"new", ".csv")
+    past = time.time() - 91 * 86400
+    os.utime(old, (past, past))
+    assert storage.purge(90) == 1
+    assert not os.path.exists(old) and os.path.exists(new)
+    assert storage.purge(90) == 0

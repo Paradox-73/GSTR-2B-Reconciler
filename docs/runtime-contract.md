@@ -28,6 +28,7 @@ before each api rollout, and as a one-shot service in compose.
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | api (creates the first user at startup if missing) | | password yes |
 | `UPLOAD_DIR` | api | `/data/uploads` (volume, writable by uid 10001) | no |
 | `LOG_LEVEL` | all | `INFO` | no |
+| `RETENTION_DAYS` | api (deletes uploaded files older than this, hourly) | `90` | no |
 | `MLFLOW_TRACKING_URI` | worker, trainer | `http://mlflow:5000`. Unset = worker uses the model baked into the image | no |
 | `MODEL_POLL_SECONDS` | worker | `60` | no |
 | `VAULT_ADDR` | api (Transit encryption, week 3) | `http://vault:8200` | no |

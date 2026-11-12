@@ -21,6 +21,7 @@ class Settings:
         self.admin_password = env("ADMIN_PASSWORD")
         self.upload_dir = env("UPLOAD_DIR", "./data/uploads")
         self.max_upload_mb = int(env("MAX_UPLOAD_MB", "20"))
+        self.retention_days = int(env("RETENTION_DAYS", "90"))
 
     def check_api(self) -> None:
         """Only the api signs tokens; the worker and migrations run without a JWT secret."""
