@@ -78,7 +78,8 @@ services:
       mlflow: {condition: service_healthy}
       migrate: {condition: service_completed_successfully}
 
-  # On demand: docker compose -f deploy/docker-compose.yml run --rm trainer --force
+  # On demand: docker compose -f deploy/docker-compose.yml run trainer --force
+  # (no --rm: Filebeat needs the finished container's log file to ship gate_result to Kibana)
   trainer:
     image: gstr2b-trainer:dev
     entrypoint: ["python", "-m", "trainer"]

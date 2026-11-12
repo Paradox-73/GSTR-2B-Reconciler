@@ -1,3 +1,4 @@
+import os
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -31,6 +32,7 @@ def ensure_admin() -> None:
 async def lifespan(app: FastAPI):
     logs.setup()
     get_settings().check_api()  # fail fast on bad config
+    logs.log("app_started", version=os.environ.get("APP_VERSION", "dev"))
     engine()
     try:
         ensure_admin()

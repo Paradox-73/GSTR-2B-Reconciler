@@ -6,7 +6,8 @@ COPY requirements.txt /tmp/requirements.txt
 RUN /venv/bin/pip install -r /tmp/requirements.txt
 
 FROM python:3.12-slim AS base
-ENV PATH=/venv/bin:$PATH PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+ARG APP_VERSION=dev
+ENV PATH=/venv/bin:$PATH PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 APP_VERSION=$APP_VERSION
 RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin app
 COPY --from=deps /venv /venv
 WORKDIR /app
