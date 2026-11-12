@@ -1,0 +1,148 @@
+# Order: postgres up -> migrations Job with the new api image -> everything else.
+# Only kubectl is used here, so the Jenkins user needs no Python Kubernetes client.
+
+- name: Check that a Docker Hub user was given
+  ansible.builtin.assert:
+    that: dockerhub_user | length > 0
+    fail_msg: "Pass -e dockerhub_user=<your Docker Hub user>."
+    quiet: true
+
+- name: Create the app namespace
+  ansible.builtin.command: "kubectl apply -f {{ k8s_dir }}/namespace.yaml"
+  register: app_ns
+  changed_when: "'unchanged' not in app_ns.stdout"
+
+- name: Check that the app secret exists
+  ansible.builtin.command: "kubectl -n {{ app_namespace }} get secret gstr2b-secrets"
+  register: app_secret
+  changed_when: false
+  failed_when: false
+
+- name: Stop if the app secret is missing
+  ansible.builtin.fail:
+    msg: "Secret gstr2b-secrets is missing. Create it from deploy/k8s/secret.example.yaml (see deploy/k8s/README.md)."
+  when: app_secret.rc != 0
+
+- name: Build the image overrides for this tag
+  ansible.builtin.set_fact:
+    app_kustomize_images: >-
+      {{ app_kustomize_images | default([]) + [{
+           'name': 'DOCKERHUB_USER/' ~ item,
+           'newName': dockerhub_user ~ '/' ~ item,
+           'newTag': image_tag | string
+         }] }}
+  loop: "{{ app_images }}"
+
+- name: Render, migrate and roll out
+  block:
+    # The repo copy stays untouched; tags are pinned in a throwaway copy.
+    - name: Make a scratch directory
+      ansible.builtin.tempfile:
+        state: directory
+        suffix: -gstr2b-k8s
+      register: app_render_dir
+
+    - name: Copy the manifests into it
+      ansible.builtin.copy:
+        src: "{{ k8s_dir }}/"
+        dest: "{{ app_render_dir.path }}/"
+        mode: preserve
+      changed_when: false
+
+    # lookup reads on the controller, which is this same machine (inventory: localhost).
+    - name: Pin image tags in the scratch copy
+      ansible.builtin.copy:
+        dest: "{{ app_render_dir.path }}/{{ item }}"
+        content: "{{ lookup('ansible.builtin.file', k8s_dir ~ '/' ~ item) | from_yaml | combine({'images': app_kustomize_images}) | to_nice_yaml }}"
+        mode: "0644"
+      loop:
+        - kustomization.yaml
+        - migrations/kustomization.yaml
+      changed_when: false
+
+    - name: Apply postgres
+      ansible.builtin.command: "kubectl apply -k {{ app_render_dir.path }} -l app.kubernetes.io/name=postgres"
+      register: app_pg_apply
+      changed_when: "' created' in app_pg_apply.stdout or ' configured' in app_pg_apply.stdout"
+
+    - name: Wait for postgres
+      ansible.builtin.command: >-
+        kubectl -n {{ app_namespace }} rollout status statefulset/postgres
+        --timeout={{ app_rollout_timeout }}
+      changed_when: false
+
+    - name: Read the last migrations run
+      ansible.builtin.command:
+        argv:
+          - kubectl
+          - -n
+          - "{{ app_namespace }}"
+          - get
+          - job
+          - migrations
+          - -o
+          - "jsonpath={.spec.template.spec.containers[0].image} {.status.succeeded}"
+      register: app_last_migration
+      changed_when: false
+      failed_when: false
+
+    # Skipped when this exact image already migrated successfully, so re-runs are no-ops.
+    - name: Run migrations for this image
+      when: app_last_migration.stdout != dockerhub_user ~ '/gstr2b-api:' ~ image_tag ~ ' 1'
+      block:
+        - name: Delete the previous migrations Job
+          ansible.builtin.command: "kubectl -n {{ app_namespace }} delete job migrations --ignore-not-found --wait=true"
+          register: app_job_delete
+          changed_when: "'deleted' in app_job_delete.stdout"
+
+        - name: Start the migrations Job
+          ansible.builtin.command: "kubectl apply -k {{ app_render_dir.path }}/migrations"
+
+        - name: Wait for the migrations Job to finish
+          ansible.builtin.command:
+            argv:
+              - kubectl
+              - -n
+              - "{{ app_namespace }}"
+              - get
+              - job
+              - migrations
+              - -o
+              - 'jsonpath={.status.conditions[?(@.status=="True")].type}'
+          register: app_migration_state
+          until: app_migration_state.stdout is search('Complete|Failed')
+          retries: "{{ (app_migration_timeout_s / 5) | int }}"
+          delay: 5
+          changed_when: false
+
+        - name: Read the migrations log
+          ansible.builtin.command: "kubectl -n {{ app_namespace }} logs job/migrations --tail=50"
+          register: app_migration_log
+          changed_when: false
+          failed_when: false
+          when: "'Complete' not in app_migration_state.stdout"
+
+        - name: Stop if migrations failed
+          ansible.builtin.fail:
+            msg: "Migrations failed; nothing else was rolled out. Last log lines:\n{{ app_migration_log.stdout }}"
+          when: "'Complete' not in app_migration_state.stdout"
+
+    - name: Apply all manifests
+      ansible.builtin.command: "kubectl apply -k {{ app_render_dir.path }}"
+      register: app_apply
+      changed_when: "' created' in app_apply.stdout or ' configured' in app_apply.stdout"
+
+    - name: Wait for each rollout
+      ansible.builtin.command: >-
+        kubectl -n {{ app_namespace }} rollout status deployment/{{ item }}
+        --timeout={{ app_rollout_timeout }}
+      loop: "{{ app_deployments }}"
+      changed_when: false
+
+  always:
+    - name: Remove the scratch directory
+      ansible.builtin.file:
+        path: "{{ app_render_dir.path }}"
+        state: absent
+      when: app_render_dir.path is defined
+      changed_when: false

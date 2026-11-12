@@ -1,0 +1,39 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: gstr2b
+
+# The migrations Job lives in migrations/ because it must finish before the api
+# rolls out; roles/app_deploy applies it in between. secret.yaml is applied by hand.
+resources:
+  - namespace.yaml
+  - config.yaml
+  - serviceaccounts.yaml
+  - storage.yaml
+  - postgres.yaml
+  - redis.yaml
+  - api.yaml
+  - worker.yaml
+  - frontend.yaml
+  - mlflow.yaml
+  - hpa.yaml
+  - ingress.yaml
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: gstr2b
+
+# roles/app_deploy replaces this block with <dockerhub_user>/<image>:<git-sha> on every deploy.
+# For a manual `kubectl apply -k`, put your Docker Hub user in each newName.
+images:
+  - name: DOCKERHUB_USER/gstr2b-api
+    newName: DOCKERHUB_USER/gstr2b-api
+    newTag: latest
+  - name: DOCKERHUB_USER/gstr2b-worker
+    newName: DOCKERHUB_USER/gstr2b-worker
+    newTag: latest
+  - name: DOCKERHUB_USER/gstr2b-frontend
+    newName: DOCKERHUB_USER/gstr2b-frontend
+    newTag: latest
+  - name: DOCKERHUB_USER/gstr2b-trainer
+    newName: DOCKERHUB_USER/gstr2b-trainer
+    newTag: latest

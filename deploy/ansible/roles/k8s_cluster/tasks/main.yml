@@ -1,0 +1,57 @@
+- name: Install kubectl
+  ansible.builtin.get_url:
+    url: "https://dl.k8s.io/release/v{{ kubectl_version }}/bin/linux/{{ deb_arch }}/kubectl"
+    checksum: "sha256:https://dl.k8s.io/release/v{{ kubectl_version }}/bin/linux/{{ deb_arch }}/kubectl.sha256"
+    dest: /usr/local/bin/kubectl
+    mode: "0755"
+  become: true
+
+- name: Install minikube
+  ansible.builtin.get_url:
+    url: "https://storage.googleapis.com/minikube/releases/v{{ minikube_version }}/minikube-linux-{{ deb_arch }}"
+    checksum: "sha256:https://storage.googleapis.com/minikube/releases/v{{ minikube_version }}/minikube-linux-{{ deb_arch }}.sha256"
+    dest: /usr/local/bin/minikube
+    mode: "0755"
+  become: true
+
+# Helm installs the Vault chart (roles/vault).
+- name: Download helm
+  ansible.builtin.get_url:
+    url: "https://get.helm.sh/helm-v{{ helm_version }}-linux-{{ deb_arch }}.tar.gz"
+    checksum: "sha256:https://get.helm.sh/helm-v{{ helm_version }}-linux-{{ deb_arch }}.tar.gz.sha256sum"
+    dest: "/tmp/helm-v{{ helm_version }}.tar.gz"
+    mode: "0644"
+
+- name: Install helm
+  ansible.builtin.unarchive:
+    src: "/tmp/helm-v{{ helm_version }}.tar.gz"
+    dest: /usr/local/bin
+    remote_src: true
+    include: ["linux-{{ deb_arch }}/helm"]
+    extra_opts: ["--strip-components=1"]
+    creates: /usr/local/bin/helm
+  become: true
+
+- name: Check whether minikube is running
+  ansible.builtin.command: '{{ minikube_shell }} "minikube status"'
+  register: minikube_status
+  changed_when: false
+  failed_when: false
+
+# --cpus and --memory only take effect when the cluster is created; to change them
+# later, run `minikube delete` and re-run this role.
+- name: Start minikube
+  ansible.builtin.command: >-
+    {{ minikube_shell }} "minikube start --driver={{ minikube_driver }}
+    --cpus={{ minikube_cpus }} --memory={{ minikube_memory }}"
+  when: minikube_status.rc != 0
+
+- name: List minikube addons
+  ansible.builtin.command: '{{ minikube_shell }} "minikube addons list -o json"'
+  register: minikube_addons_list
+  changed_when: false
+
+- name: Enable minikube addons
+  ansible.builtin.command: '{{ minikube_shell }} "minikube addons enable {{ item }}"'
+  loop: "{{ minikube_addons }}"
+  when: (minikube_addons_list.stdout | from_json)[item].Status != 'enabled'

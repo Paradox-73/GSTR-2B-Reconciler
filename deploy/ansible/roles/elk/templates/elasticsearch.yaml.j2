@@ -1,0 +1,80 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch
+  namespace: "{{ elk_namespace }}"
+  labels:
+    app.kubernetes.io/name: elasticsearch
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: elasticsearch
+  ports:
+    - name: http
+      port: 9200
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: elasticsearch
+  namespace: "{{ elk_namespace }}"
+  labels:
+    app.kubernetes.io/name: elasticsearch
+spec:
+  serviceName: elasticsearch
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: elasticsearch
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: elasticsearch
+    spec:
+      securityContext:
+        fsGroup: 1000 # the elasticsearch user in the official image
+      containers:
+        - name: elasticsearch
+          image: "docker.elastic.co/elasticsearch/elasticsearch:{{ elk_version }}"
+          env:
+            - name: discovery.type
+              value: single-node
+            # Single-user laptop cluster reached only from inside minikube.
+            - name: xpack.security.enabled
+              value: "false"
+            # Avoids having to raise vm.max_map_count on the minikube node.
+            - name: node.store.allow_mmap
+              value: "false"
+            # A nearly full laptop disk would otherwise make every index read-only.
+            - name: cluster.routing.allocation.disk.threshold_enabled
+              value: "false"
+            - name: ES_JAVA_OPTS
+              value: "-Xms{{ elasticsearch_heap }} -Xmx{{ elasticsearch_heap }}"
+          ports:
+            - name: http
+              containerPort: 9200
+          readinessProbe:
+            httpGet:
+              path: /_cluster/health?local=true
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 200m
+              memory: 1Gi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          volumeMounts:
+            - name: data
+              mountPath: /usr/share/elasticsearch/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 5Gi

@@ -1,0 +1,13 @@
+# Non-secret settings shared by api, worker and the migrations Job.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gstr2b-config
+data:
+  REDIS_URL: redis://redis:6379/0
+  UPLOAD_DIR: /data/uploads
+  LOG_LEVEL: INFO
+  MLFLOW_TRACKING_URI: http://mlflow:5000
+  # Vault runs in its own namespace (roles/vault), so the short name "vault" does not resolve here.
+  VAULT_ADDR: http://vault.vault.svc:8200
+  ADMIN_EMAIL: admin@example.com

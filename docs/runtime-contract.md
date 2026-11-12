@@ -29,7 +29,7 @@ before each api rollout, and as a one-shot service in compose.
 | `UPLOAD_DIR` | api | `/data/uploads` (volume, writable by uid 10001) | no |
 | `LOG_LEVEL` | all | `INFO` | no |
 | `MLFLOW_TRACKING_URI` | worker, trainer (week 4) | `http://mlflow:5000` | no |
-| `VAULT_ADDR` | api (Transit encryption, week 3) | `http://vault:8200` | no |
+| `VAULT_ADDR` | api (Transit encryption, week 3) | `http://vault.vault.svc:8200` (Vault lives in its own `vault` namespace) | no |
 
 Any secret var can instead be given as `<VAR>_FILE=/path/to/file` and the app reads the file. That is
 how Vault Agent Injector hands secrets over (`/vault/secrets/<name>`), so manifests never hold the

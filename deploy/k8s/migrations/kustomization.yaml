@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: gstr2b
+
+resources:
+  - job.yaml
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: gstr2b
+
+# Rewritten by roles/app_deploy together with ../kustomization.yaml.
+images:
+  - name: DOCKERHUB_USER/gstr2b-api
+    newName: DOCKERHUB_USER/gstr2b-api
+    newTag: latest

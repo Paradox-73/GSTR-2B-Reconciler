@@ -1,0 +1,27 @@
+# No host rule, so http://$(minikube ip)/ works without editing /etc/hosts.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: gstr2b
+  annotations:
+    # nginx rejects request bodies over 1 MB by default; a year of GSTR-2B or register data can exceed that.
+    nginx.ingress.kubernetes.io/proxy-body-size: 20m
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: api
+                port:
+                  number: 8000
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  number: 8080
