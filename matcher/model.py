@@ -31,7 +31,8 @@ class MatchModel:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         self.booster.save_model(path)
-        meta_path(path).write_text(json.dumps(self.meta, indent=1) + "\n", encoding="utf-8")
+        meta_path(path).write_text(json.dumps(self.meta, indent=1) + "\n", encoding="utf-8",
+                                   newline="\n")
 
     @classmethod
     def load(cls, path: str | Path = DEFAULT_PATH) -> "MatchModel":
