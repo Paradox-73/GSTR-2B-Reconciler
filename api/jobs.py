@@ -30,6 +30,7 @@ class ModelHolder:
         self.model = None
         self.loaded = False
         self.registry_version = None
+        self.bad_version = None  # a promoted version that failed to load: don't refetch it
 
     def get(self):
         if not self.loaded:
@@ -40,8 +41,11 @@ class ModelHolder:
         if registry.enabled():
             try:
                 mv = registry.production_version()
-                if mv is not None and mv.version != self.registry_version:
+                if mv is not None and mv.version not in (self.registry_version,
+                                                         self.bad_version):
+                    self.bad_version = mv.version  # cleared below once it loads
                     new = registry.load_version(mv)
+                    self.bad_version = None
                     old = self.model.version if self.model else None
                     self.model, self.registry_version, self.loaded = new, mv.version, True
                     logs.log("model_swapped", from_version=old, model_version=new.version)
@@ -119,14 +123,16 @@ def run_reconciliation(run_id: str) -> None:
             counts = dict(Counter(res.category.value for res in results))
             run.summary = {"counts": counts, "books": len(books), "gstr2b": len(g2b)}
             run.status, run.model_version = "done", version
+            run.finished_at = datetime.now(UTC)
+            db.commit()  # inside the try: a failed results write must mark the run failed
         except Exception as e:
             db.rollback()
             run = db.get(Run, uuid.UUID(run_id))
             run.status, run.error = "failed", type(e).__name__  # no message: may contain data
+            run.finished_at = datetime.now(UTC)
             counts, version = None, None
             logs.log("run_failed", logging.ERROR, exc_info=True, error_type=type(e).__name__)
-        run.finished_at = datetime.now(UTC)
-        db.commit()
+            db.commit()
     if counts is not None:
         logs.log("run_completed", duration_ms=round((time.perf_counter() - started) * 1000),
                  model_version=version, counts=counts,
@@ -134,6 +140,7 @@ def run_reconciliation(run_id: str) -> None:
 
 
 STUCK_AFTER_MINUTES = 15  # a 2000-invoice run takes ~1-2s, so this is very generous
+QUEUED_LOST_AFTER_MINUTES = 120
 
 
 def reap_stuck_runs(now: datetime | None = None) -> int:
@@ -143,12 +150,15 @@ def reap_stuck_runs(now: datetime | None = None) -> int:
 
     from sqlalchemy import or_, update
 
-    cutoff = (now or datetime.now(UTC)) - timedelta(minutes=STUCK_AFTER_MINUTES)
+    now = now or datetime.now(UTC)
+    started_cutoff = now - timedelta(minutes=STUCK_AFTER_MINUTES)
+    # Queued runs get far longer: in a filing-week spike they wait behind others, they aren't lost
+    queued_cutoff = now - timedelta(minutes=QUEUED_LOST_AFTER_MINUTES)
     engine()
     with SessionLocal() as db:
-        n = db.execute(update(Run).where(
-            or_(Run.status == "running", Run.status == "queued"),
-            or_(Run.started_at < cutoff, Run.started_at.is_(None) & (Run.created_at < cutoff)))
+        n = db.execute(update(Run).where(or_(
+            (Run.status == "running") & (Run.started_at < started_cutoff),
+            (Run.status == "queued") & (Run.created_at < queued_cutoff)))
             .values(status="failed", error="WorkerLost", finished_at=datetime.now(UTC))).rowcount
         db.commit()
     if n:
