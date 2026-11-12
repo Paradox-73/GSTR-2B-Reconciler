@@ -7,6 +7,8 @@ x-backend-env: &backend-env
   DATABASE_URL: postgresql+psycopg://gstr2b:${POSTGRES_PASSWORD:?set it in deploy/.env}@postgres:5432/gstr2b
   REDIS_URL: redis://redis:6379/0
   LOG_LEVEL: INFO
+  MLFLOW_TRACKING_URI: http://mlflow:5000
+  MLFLOW_DISABLE_AGENT_HINT: "1"
 
 services:
   postgres:
@@ -50,6 +52,41 @@ services:
     depends_on:
       vault: {condition: service_healthy}
 
+  # Tracking + model registry. SQLite on a volume is enough for one server; artifacts are
+  # served over HTTP so the trainer and workers need no shared folder.
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v3.18.0
+    command: >-
+      mlflow server --host 0.0.0.0 --port 5000
+      --backend-store-uri sqlite:////mlflow/mlflow.db
+      --artifacts-destination /mlflow/artifacts --serve-artifacts
+      --allowed-hosts "mlflow:5000,localhost:5000,127.0.0.1:5000"
+    volumes: [mlflow:/mlflow]
+    ports: ["5000:5000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 5s
+      retries: 30
+
+  # Registers the bundled model as production the first time, so workers have an r1 to load.
+  model-bootstrap:
+    build: {context: .., target: trainer}
+    image: gstr2b-trainer:dev
+    command: ["python", "-m", "trainer", "--bootstrap"]
+    environment: *backend-env
+    depends_on:
+      mlflow: {condition: service_healthy}
+      migrate: {condition: service_completed_successfully}
+
+  # On demand: docker compose -f deploy/docker-compose.yml run --rm trainer --force
+  trainer:
+    image: gstr2b-trainer:dev
+    entrypoint: ["python", "-m", "trainer"]
+    environment: *backend-env
+    profiles: [tools]
+    depends_on:
+      mlflow: {condition: service_healthy}
+
   migrate:
     build: {context: .., target: api}
     image: gstr2b-api:dev
@@ -81,10 +118,13 @@ services:
   worker:
     build: {context: .., target: worker}
     image: gstr2b-worker:dev
-    environment: *backend-env
+    environment:
+      <<: *backend-env
+      MODEL_POLL_SECONDS: "15"  # 60 in K8s; short here so a promotion shows up quickly
     depends_on:
       migrate: {condition: service_completed_successfully}
       redis: {condition: service_healthy}
+      model-bootstrap: {condition: service_completed_successfully}
 
   frontend:
     build: {context: ../frontend}
@@ -96,5 +136,6 @@ services:
       api: {condition: service_healthy}
 
 volumes:
+  mlflow:
   pgdata:
   uploads:
