@@ -91,7 +91,7 @@ services:
     image: gstr2b-frontend:dev
     environment:
       API_UPSTREAM: http://api:8000
-    ports: ["8080:8080"]
+    ports: ["${FRONTEND_PORT:-8080}:8080"]  # set FRONTEND_PORT in deploy/.env if 8080 is taken
     depends_on:
       api: {condition: service_healthy}
 
