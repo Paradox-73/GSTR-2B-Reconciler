@@ -19,19 +19,29 @@ export default function ClientPage() {
   const [period, setPeriod] = useState(previousMonth());
   const [files, setFiles] = useState({});
   const [uploads, setUploads] = useState({});
-  const [mappingColumns, setMappingColumns] = useState(null);
+  const [latest, setLatest] = useState({});
+  const [uploadCount, setUploadCount] = useState(0);
+  const [mappingNeeded, setMappingNeeded] = useState(null);
   const [mappingState, setMappingState] = useState({});
   const [runState, setRunState] = useState({});
 
   useEffect(() => {
-    // There is no GET /clients/{id}; the list is small, so pick it out of that
-    api('/clients').then((list) => {
-      const c = list.find((x) => x.id === clientId);
-      if (c) setClient(c);
-      else setLoadError('Client not found');
-    }, (err) => setLoadError(err.message));
+    api(`/clients/${clientId}`).then(setClient, (err) => setLoadError(err.message));
     api(`/clients/${clientId}/runs`).then(setRuns, () => setRuns([]));
   }, [clientId]);
+
+  useEffect(() => {
+    let stopped = false;
+    api(`/clients/${clientId}/uploads?period=${period}`).then((list) => {
+      if (stopped) return;
+      const byKind = {};
+      for (const u of list) byKind[u.kind] ??= u;
+      setLatest(byKind);
+    }, () => !stopped && setLatest({}));
+    return () => {
+      stopped = true;
+    };
+  }, [clientId, period, uploadCount]);
 
   const setUpload = (kind, state) => setUploads((u) => ({ ...u, [kind]: state }));
 
@@ -44,11 +54,12 @@ export default function ClientPage() {
     form.append('period', period);
     form.append('file', file);
     try {
-      const res = await api(`/clients/${clientId}/uploads`, { method: 'POST', form });
-      setUpload(kind, { result: { ...res, name: file.name } });
+      await api(`/clients/${clientId}/uploads`, { method: 'POST', form });
+      setUpload(kind, {});
+      setUploadCount((n) => n + 1);
     } catch (err) {
       if (kind === 'books' && err.status === 409 && err.detail && err.detail.columns) {
-        setMappingColumns(err.detail.columns);
+        setMappingNeeded(err.detail);
         setUpload(kind, {});
       } else {
         setUpload(kind, { error: err.message });
@@ -61,7 +72,7 @@ export default function ClientPage() {
     try {
       const updated = await api(`/clients/${clientId}/mapping`, { method: 'PUT', json: { mapping } });
       setClient(updated);
-      setMappingColumns(null);
+      setMappingNeeded(null);
       setMappingState({});
       await upload('books');
     } catch (err) {
@@ -100,6 +111,7 @@ export default function ClientPage() {
       <div className="grid-uploads">
         {UPLOADS.map(({ kind, title, hint, accept }) => {
           const u = uploads[kind] || {};
+          const last = latest[kind];
           return (
             <section key={kind} className="card upload">
               <h2>{title}</h2>
@@ -113,10 +125,10 @@ export default function ClientPage() {
                 </button>
               </div>
               {u.error && <p className="error" role="alert">{u.error}</p>}
-              {u.result && (
+              {last && (
                 <p className="ok" data-testid={`${kind}-result`}>
-                  <strong>{num(u.result.invoice_count)} invoices</strong> read from {u.result.name} for{' '}
-                  {periodLabel(u.result.period)}
+                  <strong>{num(last.invoice_count)} invoices</strong> read from {last.original_name} for{' '}
+                  {periodLabel(last.period)} · uploaded {dateTime(last.uploaded_at)}
                 </p>
               )}
             </section>
@@ -124,11 +136,13 @@ export default function ClientPage() {
         })}
       </div>
 
-      {mappingColumns && (
+      {mappingNeeded && (
         <MappingForm
-          columns={mappingColumns}
+          columns={mappingNeeded.columns}
+          message={mappingNeeded.message}
+          saved={client.column_mapping}
           onSave={saveMapping}
-          onCancel={() => setMappingColumns(null)}
+          onCancel={() => setMappingNeeded(null)}
           saving={mappingState.saving}
           error={mappingState.error}
         />

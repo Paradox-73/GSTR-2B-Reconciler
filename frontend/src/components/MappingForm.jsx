@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { guessMapping, LOGICAL_COLUMNS } from '../mapping.js';
 
-export default function MappingForm({ columns, onSave, onCancel, saving, error }) {
-  const [guessed] = useState(() => guessMapping(columns));
-  const [values, setValues] = useState(guessed);
+export default function MappingForm({ columns, message, saved, onSave, onCancel, saving, error }) {
+  const [kept] = useState(() => Object.fromEntries(Object.entries(saved || {}).filter(([, h]) => columns.includes(h))));
+  const [guessed] = useState(() => guessMapping(columns.filter((h) => !Object.values(kept).includes(h))));
+  const [values, setValues] = useState(() => ({ ...guessed, ...kept }));
   const missing = LOGICAL_COLUMNS.filter((c) => c.required && !values[c.key]);
 
   function submit(e) {
@@ -16,9 +17,10 @@ export default function MappingForm({ columns, onSave, onCancel, saving, error }
   return (
     <form className="card mapping" onSubmit={submit} aria-label="Column mapping">
       <h2>Map purchase register columns</h2>
+      {message && <p className="error" role="alert">{message}</p>}
       <p className="muted">
-        This client has no column mapping yet. Pick which column in the file holds each field.
-        Guesses are pre-filled from the header names; check them before saving. The mapping is
+        Pick which column in the file holds each field. The saved mapping, where it still fits, and
+        guesses from the header names are pre-filled; check them before saving. The mapping is
         saved for this client and the upload is retried.
       </p>
       <div className="mapping-grid">
