@@ -23,8 +23,7 @@ pipeline {
 
     environment {
         NAMESPACE = 'gstr2b'
-        // trainer joins this list when its Dockerfile target lands (#22)
-        IMAGES = 'api worker frontend'
+        IMAGES = 'api worker trainer frontend'
         PIP_DISABLE_PIP_VERSION_CHECK = '1'
     }
 
@@ -95,7 +94,7 @@ pipeline {
         stage('Build') {
             steps {
                 sh '''
-                    for t in api worker; do
+                    for t in api worker trainer; do
                         docker build --target "$t" \
                             -t "$DOCKERHUB_USER/gstr2b-$t:$SHA" \
                             -t "$DOCKERHUB_USER/gstr2b-$t:latest" .

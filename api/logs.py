@@ -8,13 +8,13 @@ from datetime import UTC, datetime
 
 request_id: ContextVar[str | None] = ContextVar("request_id", default=None)
 run_id: ContextVar[str | None] = ContextVar("run_id", default=None)
-SERVICE = os.environ.get("SERVICE_NAME", "api")
 
 
 class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         line = {"ts": datetime.now(UTC).isoformat(timespec="milliseconds"),
-                "level": record.levelname, "service": SERVICE, "event": record.getMessage(),
+                "level": record.levelname,
+                "service": os.environ.get("SERVICE_NAME", "api"), "event": record.getMessage(),
                 "logger": record.name}
         for key, var in (("request_id", request_id), ("run_id", run_id)):
             if var.get():

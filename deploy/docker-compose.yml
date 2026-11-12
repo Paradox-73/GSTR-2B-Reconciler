@@ -7,6 +7,8 @@ x-backend-env: &backend-env
   DATABASE_URL: postgresql+psycopg://gstr2b:${POSTGRES_PASSWORD:?set it in deploy/.env}@postgres:5432/gstr2b
   REDIS_URL: redis://redis:6379/0
   LOG_LEVEL: INFO
+  MLFLOW_TRACKING_URI: http://mlflow:5000
+  MLFLOW_DISABLE_AGENT_HINT: "1"
 
 services:
   postgres:
@@ -28,6 +30,63 @@ services:
       interval: 3s
       retries: 20
 
+  # Dev mode: in memory, already unsealed. Fine for local work; K8s uses the Ansible vault role.
+  vault:
+    image: hashicorp/vault:1.18
+    cap_add: [IPC_LOCK]
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: ${VAULT_TOKEN:?set it in deploy/.env}
+      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+    ports: ["8200:8200"]
+    healthcheck:
+      test: ["CMD", "vault", "status", "-address=http://127.0.0.1:8200"]
+      interval: 3s
+      retries: 20
+
+  vault-init:
+    image: hashicorp/vault:1.18
+    environment:
+      VAULT_ADDR: http://vault:8200
+      VAULT_TOKEN: ${VAULT_TOKEN}
+    entrypoint: ["sh", "-c", "vault secrets enable transit || true; vault write -f transit/keys/uploads"]
+    depends_on:
+      vault: {condition: service_healthy}
+
+  # Tracking + model registry. SQLite on a volume is enough for one server; artifacts are
+  # served over HTTP so the trainer and workers need no shared folder.
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v3.18.0
+    command: >-
+      mlflow server --host 0.0.0.0 --port 5000
+      --backend-store-uri sqlite:////mlflow/mlflow.db
+      --artifacts-destination /mlflow/artifacts --serve-artifacts
+      --allowed-hosts "mlflow:5000,localhost:5000,127.0.0.1:5000"
+    volumes: [mlflow:/mlflow]
+    ports: ["5000:5000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 5s
+      retries: 30
+
+  # Registers the bundled model as production the first time, so workers have an r1 to load.
+  model-bootstrap:
+    build: {context: .., target: trainer}
+    image: gstr2b-trainer:dev
+    command: ["python", "-m", "trainer", "--bootstrap"]
+    environment: *backend-env
+    depends_on:
+      mlflow: {condition: service_healthy}
+      migrate: {condition: service_completed_successfully}
+
+  # On demand: docker compose -f deploy/docker-compose.yml run --rm trainer --force
+  trainer:
+    image: gstr2b-trainer:dev
+    entrypoint: ["python", "-m", "trainer"]
+    environment: *backend-env
+    profiles: [tools]
+    depends_on:
+      mlflow: {condition: service_healthy}
+
   migrate:
     build: {context: .., target: api}
     image: gstr2b-api:dev
@@ -43,11 +102,14 @@ services:
       JWT_SECRET: ${JWT_SECRET:?set it in deploy/.env}
       ADMIN_EMAIL: ${ADMIN_EMAIL}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      VAULT_ADDR: http://vault:8200
+      VAULT_TOKEN: ${VAULT_TOKEN}
     volumes: [uploads:/data/uploads]
     ports: ["8000:8000"]
     depends_on:
       migrate: {condition: service_completed_successfully}
       redis: {condition: service_healthy}
+      vault-init: {condition: service_completed_successfully}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/readyz')"]
       interval: 5s
@@ -56,11 +118,24 @@ services:
   worker:
     build: {context: .., target: worker}
     image: gstr2b-worker:dev
-    environment: *backend-env
+    environment:
+      <<: *backend-env
+      MODEL_POLL_SECONDS: "15"  # 60 in K8s; short here so a promotion shows up quickly
     depends_on:
       migrate: {condition: service_completed_successfully}
       redis: {condition: service_healthy}
+      model-bootstrap: {condition: service_completed_successfully}
+
+  frontend:
+    build: {context: ../frontend}
+    image: gstr2b-frontend:dev
+    environment:
+      API_UPSTREAM: http://api:8000
+    ports: ["${FRONTEND_PORT:-8080}:8080"]  # set FRONTEND_PORT in deploy/.env if 8080 is taken
+    depends_on:
+      api: {condition: service_healthy}
 
 volumes:
+  mlflow:
   pgdata:
   uploads:

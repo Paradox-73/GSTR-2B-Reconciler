@@ -24,11 +24,10 @@ spec:
   selector:
     matchLabels:
       app.kubernetes.io/name: mlflow
+  # SQLite on an RWO volume: one pod at a time. Workers keep their current model while
+  # MLflow restarts, so a short gap here costs nothing.
   strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxUnavailable: 0
-      maxSurge: 1
+    type: Recreate
   template:
     metadata:
       labels:
@@ -44,24 +43,19 @@ spec:
           type: RuntimeDefault
       containers:
         - name: mlflow
-          image: ghcr.io/mlflow/mlflow:v2.17.2
-          # shortcut: the stock image has no PostgreSQL driver, so it is installed on every start
-          # (needs internet). Bake it into a small image FROM this one when week 4 starts.
-          command: ["sh", "-c"]
-          args:
-            - >-
-              pip install --no-cache-dir --quiet --target /tmp/pydeps psycopg2-binary==2.9.10 &&
-              exec mlflow server --host 0.0.0.0 --port 5000 --workers 1
-              --backend-store-uri "$MLFLOW_DATABASE_URL"
-              --artifacts-destination /mlartifacts
-          env:
-            - name: PYTHONPATH
-              value: /tmp/pydeps
-            - name: MLFLOW_DATABASE_URL
-              valueFrom:
-                secretKeyRef:
-                  name: gstr2b-secrets
-                  key: MLFLOW_DATABASE_URL
+          image: ghcr.io/mlflow/mlflow:v3.18.0
+          # Same setup as compose: SQLite + artifacts on the PVC, artifacts served over HTTP.
+          # allowed-hosts "*": kubelet probes send the pod IP as Host; only reachable in-cluster.
+          command:
+            - mlflow
+            - server
+            - --host=0.0.0.0
+            - --port=5000
+            - --workers=1
+            - --backend-store-uri=sqlite:////mlflow/mlflow.db
+            - --artifacts-destination=/mlflow/artifacts
+            - --serve-artifacts
+            - --allowed-hosts=*
           ports:
             - name: http
               containerPort: 5000
@@ -96,7 +90,7 @@ spec:
               drop: ["ALL"]
           volumeMounts:
             - name: artifacts
-              mountPath: /mlartifacts
+              mountPath: /mlflow
       volumes:
         - name: artifacts
           persistentVolumeClaim:

@@ -15,6 +15,7 @@ resources:
   - worker.yaml
   - frontend.yaml
   - mlflow.yaml
+  - trainer.yaml
   - hpa.yaml
   - ingress.yaml
 

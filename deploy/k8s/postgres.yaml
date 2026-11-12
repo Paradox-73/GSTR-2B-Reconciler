@@ -12,18 +12,6 @@ spec:
     - name: postgres
       port: 5432
 ---
-# Runs once, on an empty data directory. MLflow needs its own database because
-# both it and the app keep an alembic_version table.
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: postgres-init
-  labels:
-    app.kubernetes.io/name: postgres
-data:
-  01-mlflow.sql: |
-    CREATE DATABASE mlflow;
----
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -81,12 +69,6 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data
-            - name: init
-              mountPath: /docker-entrypoint-initdb.d
-      volumes:
-        - name: init
-          configMap:
-            name: postgres-init
   volumeClaimTemplates:
     - metadata:
         name: data

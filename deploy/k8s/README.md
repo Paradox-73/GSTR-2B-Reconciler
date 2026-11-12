@@ -110,3 +110,18 @@ controller but matched no rule. Check `kubectl -n gstr2b get ingress` shows an a
 lists pod IPs (empty means no pod is Ready yet). Under WSL or macOS with the docker
 driver the minikube IP may not be reachable; run `minikube tunnel` and use
 `http://127.0.0.1/`.
+
+## Model registry (MLflow)
+
+Workers poll MLflow every 60s for the model with the `production` alias. On a fresh cluster the
+registry is empty, so workers use the model baked into their image (run pages show `v2`). To put
+it in the registry as `r1` (or retrain with whatever review decisions exist):
+
+```bash
+kubectl -n gstr2b run model-bootstrap --rm -i --restart=Never \
+  --image=<dockerhub-user>/gstr2b-trainer:latest \
+  --overrides='{"spec":{"containers":[{"name":"model-bootstrap","image":"<dockerhub-user>/gstr2b-trainer:latest","args":["--bootstrap"],"envFrom":[{"configMapRef":{"name":"gstr2b-config"}}],"env":[{"name":"DATABASE_URL","valueFrom":{"secretKeyRef":{"name":"gstr2b-secrets","key":"DATABASE_URL"}}}]}]}}'
+```
+
+Use `"args":["--force"]` instead of `--bootstrap` to retrain now regardless of label count. The
+`trainer` CronJob does the nightly run (skips under 50 new decisions).

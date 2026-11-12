@@ -27,4 +27,11 @@ CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 FROM base AS worker
 ENV SERVICE_NAME=worker
-CMD ["sh", "-c", "exec rq worker --url \"$REDIS_URL\" reconcile"]
+CMD ["python", "-m", "api.worker"]
+
+FROM base AS trainer
+ENV SERVICE_NAME=trainer
+COPY datagen/ datagen/
+COPY trainer/ trainer/
+COPY tests/golden/ tests/golden/
+CMD ["python", "-m", "trainer"]
