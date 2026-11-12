@@ -23,7 +23,8 @@ pipeline {
 
     environment {
         NAMESPACE = 'gstr2b'
-        IMAGES = 'api worker trainer frontend'
+        // trainer joins this list when its Dockerfile target lands (#22)
+        IMAGES = 'api worker frontend'
         PIP_DISABLE_PIP_VERSION_CHECK = '1'
     }
 
@@ -57,7 +58,7 @@ pipeline {
                     . .venv/bin/activate
                     pip install -q -r requirements-dev.txt
                     ruff check .
-                    pytest -q tests/unit
+                    pytest -q tests/unit tests/api
                 '''
             }
         }
@@ -74,7 +75,7 @@ pipeline {
             }
         }
 
-        // Week 4: trainer/evaluate.py exits non-zero when a model misses config/quality_gate.yaml.
+        // Exits non-zero when the model misses config/quality_gate.yaml on the golden set.
         stage('Model quality gate') {
             when {
                 beforeAgent true
@@ -87,21 +88,21 @@ pipeline {
                 }
             }
             steps {
-                sh '. .venv/bin/activate && python -m trainer.evaluate --config config/quality_gate.yaml'
+                sh '. .venv/bin/activate && python -m trainer.evaluate'
             }
         }
 
         stage('Build') {
             steps {
                 sh '''
-                    for t in api worker trainer; do
+                    for t in api worker; do
                         docker build --target "$t" \
                             -t "$DOCKERHUB_USER/gstr2b-$t:$SHA" \
                             -t "$DOCKERHUB_USER/gstr2b-$t:latest" .
                     done
                     docker build \
                         -t "$DOCKERHUB_USER/gstr2b-frontend:$SHA" \
-                        -t "$DOCKERHUB_USER/gstr2b-frontend:latest" frontend
+                        -t "$DOCKERHUB_USER/gstr2b-frontend:latest"                         --build-arg APP_VERSION="$SHA" frontend
                 '''
             }
         }
@@ -154,15 +155,28 @@ pipeline {
                     ansible-playbook -i deploy/ansible/inventory/hosts.ini deploy/ansible/deploy.yml \
                         -e image_tag="$SHA" -e dockerhub_user="$DOCKERHUB_USER"
                 '''
+                script {  // minikube lives on the host, not in the smoke test's container
+                    env.APP_URL = env.APP_URL ?: "http://${sh(script: 'minikube ip', returnStdout: true).trim()}"
+                }
             }
         }
 
+        // Host network so the container can reach the minikube IP. Login comes from the
+        // 'smoke-user' username/password credential (the ADMIN_EMAIL / ADMIN_PASSWORD user).
         stage('Smoke test') {
-            when {
-                expression { fileExists('scripts/smoke_test.py') }
+            agent {
+                docker {
+                    image 'python:3.12-slim'
+                    args '--network host'
+                    reuseNode true
+                }
             }
             steps {
-                sh 'python3 scripts/smoke_test.py --base-url "${APP_URL:-http://$(minikube ip)}"'
+                withCredentials([usernamePassword(credentialsId: 'smoke-user',
+                                                  usernameVariable: 'SMOKE_EMAIL',
+                                                  passwordVariable: 'SMOKE_PASSWORD')]) {
+                    sh '. .venv/bin/activate && python scripts/smoke_test.py --base-url "$APP_URL"'
+                }
             }
         }
     }
