@@ -108,31 +108,64 @@ describe('clients', () => {
 });
 
 describe('client page uploads', () => {
+  const HEADERS = ['Date', 'Particulars', 'GSTIN/UIN', 'Bill No', 'Taxable Value', 'IGST', 'CGST', 'SGST'];
+  const booksUpload = { id: 'u1', kind: 'books', period: '2025-04', original_name: 'register.xlsx', invoice_count: 58, uploaded_at: '2025-05-02T09:30:00' };
+
+  async function uploadBooks() {
+    fireEvent.change(await screen.findByLabelText('Return period'), { target: { value: '2025-04' } });
+    await userEvent.upload(screen.getByLabelText('Purchase register file'), new File(['x'], 'register.xlsx'));
+    const books = screen.getByRole('heading', { name: 'Purchase register' }).closest('section');
+    await userEvent.click(within(books).getByRole('button', { name: 'Upload for Apr 2025' }));
+  }
+
+  it('shows the latest upload of each kind for the period and refetches when the period changes', async () => {
+    const calls = mockApi([
+      ['GET', /\/clients\/c1$/, { body: CLIENT }],
+      ['GET', /\/clients\/c1\/runs$/, { body: [] }],
+      ['GET', /\/clients\/c1\/uploads\?period=2025-04$/, { body: [
+        booksUpload,
+        { id: 'u0', kind: 'books', period: '2025-04', original_name: 'old.xlsx', invoice_count: 50, uploaded_at: '2025-05-01T09:00:00' },
+        { id: 'g1', kind: 'gstr2b', period: '2025-04', original_name: '2b.json', invoice_count: 41, uploaded_at: '2025-05-01T08:00:00' },
+      ] }],
+      ['GET', /\/clients\/c1\/uploads\?period=2025-03$/, { body: [] }],
+    ]);
+    renderAt('/clients/c1');
+    expect(await screen.findByRole('heading', { name: 'Acme Traders' })).toBeInTheDocument();
+    expect(calls.some((c) => c.url.endsWith('/api/v1/clients'))).toBe(false);
+
+    fireEvent.change(screen.getByLabelText('Return period'), { target: { value: '2025-04' } });
+    expect(await screen.findByTestId('books-result')).toHaveTextContent(/58 invoices read from register\.xlsx for Apr 2025 · uploaded \S/);
+    expect(screen.getByTestId('gstr2b-result')).toHaveTextContent('41 invoices read from 2b.json');
+
+    fireEvent.change(screen.getByLabelText('Return period'), { target: { value: '2025-03' } });
+    await waitFor(() => expect(screen.queryByTestId('books-result')).not.toBeInTheDocument());
+    expect(screen.queryByTestId('gstr2b-result')).not.toBeInTheDocument();
+  });
+
   it('asks for a column mapping on 409, saves it and retries the upload', async () => {
     let booksUploads = 0;
     const calls = mockApi([
-      ['GET', /\/clients$/, { body: [CLIENT] }],
+      ['GET', /\/clients\/c1$/, { body: CLIENT }],
       ['GET', /\/clients\/c1\/runs$/, { body: [] }],
+      ['GET', /\/clients\/c1\/uploads\?/, () => ({ body: booksUploads > 1 ? [booksUpload] : [] })],
       ['POST', /\/clients\/c1\/uploads$/, () => {
         booksUploads += 1;
         return booksUploads === 1
-          ? { status: 409, body: { detail: { message: 'save a column mapping for this client first', columns: ['Date', 'Particulars', 'GSTIN/UIN', 'Bill No', 'Taxable Value', 'IGST', 'CGST', 'SGST'] } } }
+          ? { status: 409, body: { detail: { message: 'save a column mapping for this client first', columns: HEADERS } } }
           : { status: 201, body: { id: 'u1', kind: 'books', period: '2025-04', invoice_count: 58, sha256: 'x' } };
       }],
       ['PUT', /\/clients\/c1\/mapping$/, (c) => ({ body: { ...CLIENT, column_mapping: JSON.parse(c.body).mapping } })],
     ]);
     renderAt('/clients/c1');
-    fireEvent.change(await screen.findByLabelText('Return period'), { target: { value: '2025-04' } });
-    await userEvent.upload(screen.getByLabelText('Purchase register file'), new File(['x'], 'register.xlsx'));
-    const books = screen.getByRole('heading', { name: 'Purchase register' }).closest('section');
-    await userEvent.click(within(books).getByRole('button', { name: 'Upload for Apr 2025' }));
+    await uploadBooks();
 
     const form = await screen.findByRole('form', { name: 'Column mapping' });
+    expect(within(form).getByText('save a column mapping for this client first')).toBeInTheDocument();
     expect(within(form).getByLabelText('Invoice number')).toHaveValue('Bill No');
     expect(within(form).getByLabelText('Supplier GSTIN')).toHaveValue('GSTIN/UIN');
     await userEvent.click(within(form).getByRole('button', { name: 'Save mapping and upload' }));
 
-    expect(await screen.findByTestId('books-result')).toHaveTextContent('58 invoices');
+    expect(await screen.findByTestId('books-result')).toHaveTextContent('58 invoices read from register.xlsx');
     const put = calls.find((c) => c.method === 'PUT');
     expect(JSON.parse(put.body).mapping).toEqual({
       invoice_date: 'Date', supplier_name: 'Particulars', supplier_gstin: 'GSTIN/UIN', invoice_no: 'Bill No',
@@ -142,6 +175,41 @@ describe('client page uploads', () => {
     expect(uploads).toHaveLength(2);
     expect(uploads[1].body.get('period')).toBe('2025-04');
     expect(uploads[1].body.get('kind')).toBe('books');
+  });
+
+  it('reopens the mapping form when the saved mapping no longer fits, keeping saved choices that still exist', async () => {
+    const saved = {
+      supplier_gstin: 'Party GSTIN', supplier_name: 'Particulars', invoice_no: 'Voucher No', invoice_date: 'Date',
+      taxable: 'Taxable Value', igst: 'IGST', cgst: 'CGST', sgst: 'SGST',
+    };
+    const message = "this file's columns don't match the saved mapping (missing: Voucher No)";
+    let booksUploads = 0;
+    const calls = mockApi([
+      ['GET', /\/clients\/c1$/, { body: { ...CLIENT, column_mapping: saved } }],
+      ['GET', /\/clients\/c1\/runs$/, { body: [] }],
+      ['GET', /\/clients\/c1\/uploads\?/, { body: [] }],
+      ['POST', /\/clients\/c1\/uploads$/, () => {
+        booksUploads += 1;
+        return booksUploads === 1
+          ? { status: 409, body: { detail: { message, columns: ['Party GSTIN', ...HEADERS] } } }
+          : { status: 201, body: { id: 'u1', kind: 'books', period: '2025-04', invoice_count: 58, sha256: 'x' } };
+      }],
+      ['PUT', /\/clients\/c1\/mapping$/, (c) => ({ body: { ...CLIENT, column_mapping: JSON.parse(c.body).mapping } })],
+    ]);
+    renderAt('/clients/c1');
+    await uploadBooks();
+
+    const form = await screen.findByRole('form', { name: 'Column mapping' });
+    expect(within(form).getByText(message)).toBeInTheDocument();
+    // The guess would be GSTIN/UIN; the saved header is still in the file, so it wins
+    expect(within(form).getByLabelText('Supplier GSTIN')).toHaveValue('Party GSTIN');
+    // The saved header is gone from the file, so the guess fills it
+    expect(within(form).getByLabelText('Invoice number')).toHaveValue('Bill No');
+    await userEvent.click(within(form).getByRole('button', { name: 'Save mapping and upload' }));
+
+    await waitFor(() => expect(screen.queryByRole('form', { name: 'Column mapping' })).not.toBeInTheDocument());
+    expect(JSON.parse(calls.find((c) => c.method === 'PUT').body).mapping).toEqual({ ...saved, invoice_no: 'Bill No' });
+    await waitFor(() => expect(calls.filter((c) => c.method === 'POST' && c.url.endsWith('/uploads'))).toHaveLength(2));
   });
 });
 
@@ -202,9 +270,11 @@ describe('run page', () => {
       ['GET', /category=missing_in_books/, { body: { total: 1, page: 1, page_size: 500, items: [orphan] } }],
       ['POST', /\/results\/m2\/decision$/, { status: 201, body: { id: 'd2', decision: 'link' } }],
       ['GET', /vendor-notes$/, { body: [{ supplier_gstin: '29AAAAA0000A1Z5', supplier_name: 'Shree Steel', body: 'Please file INV-9' }] }],
+      ['GET', /\/clients\/c1$/, { body: CLIENT }],
     ]);
     renderAt('/runs/r1?category=missing_in_2b');
     expect(await screen.findByText('Please file INV-9')).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: 'Acme Traders' })).toHaveAttribute('href', '/clients/c1');
     await userEvent.click(await screen.findByRole('button', { name: 'Link to 2B invoice' }));
     const dialog = await screen.findByRole('dialog');
     await userEvent.click(await within(dialog).findByRole('button', { name: 'Link' }));

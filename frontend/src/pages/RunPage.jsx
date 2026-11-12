@@ -11,6 +11,7 @@ const POLL_MS = 1500;
 export default function RunPage() {
   const { runId } = useParams();
   const [run, setRun] = useState(null);
+  const [clientName, setClientName] = useState('');
   const [error, setError] = useState('');
   const [params, setParams] = useSearchParams();
   const category = params.get('category') || '';
@@ -36,6 +37,12 @@ export default function RunPage() {
     };
   }, [runId]);
 
+  const clientId = run && run.client_id;
+  useEffect(() => {
+    if (!clientId) return;
+    api(`/clients/${clientId}`).then((c) => setClientName(c.name), () => {});
+  }, [clientId]);
+
   function show(next) {
     const p = {};
     if (next.category) p.category = next.category;
@@ -52,7 +59,7 @@ export default function RunPage() {
   return (
     <>
       <nav className="crumbs">
-        <Link to="/">Clients</Link> / <Link to={`/clients/${run.client_id}`}>Client</Link> / Run
+        <Link to="/">Clients</Link> / <Link to={`/clients/${run.client_id}`}>{clientName || 'Client'}</Link> / Run
       </nav>
       <div className="page-head">
         <div>
