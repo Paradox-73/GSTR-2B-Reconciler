@@ -138,3 +138,23 @@ def test_worker_settings_need_no_jwt(monkeypatch):
     s = Settings()  # what the worker does
     with pytest.raises(RuntimeError):
         s.check_api()
+
+
+def test_vendor_notes_and_export(client, auth):
+    import io
+
+    from openpyxl import load_workbook
+
+    cid = next(c["id"] for c in client.get(f"{V1}/clients", headers=auth).json()
+               if c["name"] == "Acme")
+    run_id = client.get(f"{V1}/clients/{cid}/runs", headers=auth).json()[0]["id"]
+    notes = client.get(f"{V1}/runs/{run_id}/vendor-notes", headers=auth).json()
+    assert notes and all(n["body"].startswith("Dear ") for n in notes)
+    assert any("Not showing in our GSTR-2B" in n["body"] for n in notes)
+
+    r = client.get(f"{V1}/runs/{run_id}/export", headers=auth)
+    assert r.status_code == 200 and "attachment" in r.headers["content-disposition"]
+    wb = load_workbook(io.BytesIO(r.content))
+    assert wb.sheetnames == ["Summary", "Results"]
+    total = client.get(f"{V1}/runs/{run_id}", headers=auth).json()["summary"]["counts"]
+    assert wb["Results"].max_row - 1 == sum(total.values())
