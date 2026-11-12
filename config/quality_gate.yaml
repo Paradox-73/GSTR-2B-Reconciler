@@ -1,0 +1,4 @@
+# Model promotion gate (DESIGN.md 9.3). Starting targets, tune once we have real numbers.
+min_precision: 0.98
+min_recall: 0.95
+f1_must_not_drop: true

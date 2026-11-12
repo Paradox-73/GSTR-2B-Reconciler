@@ -1,0 +1,6 @@
+# Tolerances and thresholds for the reconciliation engine (DESIGN.md 8.3, 8.6)
+amount_tolerance: 1.00        # rupees, per amount field; clients can override
+probable_threshold: 0.90      # model probability >= this -> Probable match
+review_threshold: 0.50        # between this and probable_threshold -> Needs review
+candidate_value_pct: 0.05     # value window for no-key candidates
+candidate_date_days: 10
