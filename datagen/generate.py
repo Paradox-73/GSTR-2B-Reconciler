@@ -32,7 +32,17 @@ ERRORS = {
     "not_filed": (6, C.MISSING_IN_2B, (R.MISSING_IN_2B,)),
     "itc_ineligible": (3, C.ITC_NOT_AVAILABLE, (R.ITC_INELIGIBLE,)),
     "extra_in_2b": (3, C.MISSING_IN_BOOKS, (R.MISSING_IN_BOOKS,)),
+    # Several errors on one invoice, like real registers
+    "combo_hard": (3, C.PROBABLE, (R.INV_NO_FORMAT, R.DATE_DIFF)),  # + rounding within tolerance
+    "combo_typo": (2, C.PROBABLE, (R.GSTIN_TYPO, R.DATE_DIFF)),
+    "combo_value_hard": (2, C.PROBABLE, (R.INV_NO_FORMAT, R.VALUE_DIFF, R.TAX_DIFF)),
+    # Hard negative: two different invoices from one supplier, same amount, close dates
+    # (recurring bills like rent). One is only in books, the other only in 2B. Must not pair.
+    "lookalike": (3, None, ()),
+    "lookalike_books": (0, C.MISSING_IN_2B, (R.MISSING_IN_2B,)),
+    "lookalike_2b": (0, C.MISSING_IN_BOOKS, (R.MISSING_IN_BOOKS,)),
 }
+MODEL_CATEGORIES = {C.PROBABLE.value, C.REVIEW.value}  # either is fine for a model-found pair
 
 NAMES_A = ["Shree", "Om", "Sai", "Ganesh", "Laxmi", "Balaji", "Krishna", "Mahalaxmi", "Jai",
            "Sunrise", "Patel", "Sharma", "Mehta", "Global", "National", "Royal", "Prime"]
@@ -146,7 +156,28 @@ def generate(seed: int = 42, n_invoices: int = 400, n_suppliers: int = 40,
                "SGST": tax["sgst"], "Cess": cess}
 
         err = rng.choices(errors, weights)[0]
-        if err == "inv_no_format_easy":
+        if err == "lookalike":
+            n2 = n + rng.randint(20, 60)
+            s.next_no = n2 + 1
+            d2 = d + timedelta(days=rng.randint(0, 3))
+            twin = {**inv2b, "inum": _official_no(s, n2, d2), "dt": d2.strftime("%d-%m-%Y")}
+            pairs.append((row, None, "lookalike_books"))
+            pairs.append((None, (s, twin), "lookalike_2b"))
+            continue
+        if err == "combo_hard":
+            row["Bill No"] = _hard_variant(s, n, d)
+            row["Date"] = d + timedelta(days=rng.choice([-1, 1]) * rng.randint(1, 5))
+            row["Taxable Value"] = taxable + rng.choice([-1, 1]) * _money(rng.uniform(0.01, 1))
+        elif err == "combo_typo":
+            row["GSTIN/UIN"] = _gstin_typo(s.gstin, rng)
+            row["Date"] = d + timedelta(days=rng.choice([-1, 1]) * rng.randint(1, 5))
+        elif err == "combo_value_hard":
+            row["Bill No"] = _hard_variant(s, n, d)
+            off = taxable * Decimal(str(rng.uniform(0.02, 0.2))) * rng.choice([-1, 1])
+            row["Taxable Value"] = _money(taxable + off).max(_money(100))
+            new_tax = _tax(row["Taxable Value"], rate, inter)
+            row.update(IGST=new_tax["igst"], CGST=new_tax["cgst"], SGST=new_tax["sgst"])
+        elif err == "inv_no_format_easy":
             row["Bill No"] = _easy_variant(official, rng)
         elif err == "inv_no_format_hard":
             row["Bill No"] = _hard_variant(s, n, d)

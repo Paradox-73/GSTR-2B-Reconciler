@@ -15,7 +15,7 @@ def test_same_seed_same_data():
 
 def test_every_error_type_planted():
     counts = Counter(t["error"] for t in generate(seed=42).truth)
-    assert set(counts) == set(ERRORS)
+    assert set(counts) == set(ERRORS) - {"lookalike"}  # trigger that plants the two halves
     assert min(counts.values()) >= 5
 
 
@@ -34,14 +34,16 @@ def test_truth_points_at_the_right_invoices(tmp_path):
     for t in ds.truth:
         b, g = books.get(t["books_id"]), g2b.get(t["gstr2b_id"])
         e = t["error"]
-        if e == "not_filed":
+        if e in ("not_filed", "lookalike_books"):
             assert b and not g
-        elif e == "extra_in_2b":
+        elif e in ("extra_in_2b", "lookalike_2b"):
             assert g and not b
         else:
             assert b and g, t
             same_key = (b.supplier_gstin, b.inv_no_norm) == (g.supplier_gstin, g.inv_no_norm)
-            assert same_key == (e not in ("inv_no_format_hard", "gstin_typo")), t
+            needs_model = ("inv_no_format_hard", "gstin_typo", "combo_hard", "combo_typo",
+                           "combo_value_hard")
+            assert same_key == (e not in needs_model), t
             if e == "clean":
                 assert b.inv_no_raw == g.inv_no_raw and b.inv_date == g.inv_date
                 assert (b.taxable, b.igst, b.cgst, b.sgst, b.cess) == \
@@ -58,6 +60,14 @@ def test_truth_points_at_the_right_invoices(tmp_path):
                 assert b.pan == g.pan and b.supplier_gstin != g.supplier_gstin
             if e == "itc_ineligible":
                 assert not g.itc_available
+            if e == "combo_hard":
+                assert b.inv_no_raw != g.inv_no_raw and b.inv_date != g.inv_date
+                assert abs(b.taxable - g.taxable) <= 1
+            if e == "combo_typo":
+                assert b.pan == g.pan and b.supplier_gstin != g.supplier_gstin
+                assert b.inv_date != g.inv_date
+            if e == "combo_value_hard":
+                assert abs(b.taxable - g.taxable) > 1 and b.inv_no_norm != g.inv_no_norm
             if e == "date_shift":
                 assert 1 <= abs((b.inv_date - g.inv_date).days) <= 5
 
@@ -78,3 +88,15 @@ def test_golden_set_matches_generator(tmp_path):
     for name in ("gstr2b.json", "books.csv", "truth.csv"):
         assert (tmp_path / name).read_text() == open(f"tests/golden/{name}").read(), name
     assert json.load(open("tests/golden/mapping.json")) == BOOKS_MAPPING
+
+
+def test_lookalikes_share_supplier_and_amount(tmp_path):
+    ds, books, g2b = _roundtrip(tmp_path, seed=42)
+    halves = [t for t in ds.truth if t["error"].startswith("lookalike")]
+    assert halves
+    b_side = [books[t["books_id"]] for t in halves if t["books_id"]]
+    g_side = [g2b[t["gstr2b_id"]] for t in halves if t["gstr2b_id"]]
+    for b in b_side:
+        twins = [g for g in g_side if g.supplier_gstin == b.supplier_gstin
+                 and g.taxable == b.taxable and g.inv_no_norm != b.inv_no_norm]
+        assert twins, b
