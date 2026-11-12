@@ -60,6 +60,7 @@ def to_date(value) -> date:
 
 
 _PAISE = Decimal("0.01")
+_MAX = Decimal("1e12")  # ₹1 lakh crore; also fits Numeric(14, 2)
 
 
 def amount(value) -> Decimal:
@@ -70,6 +71,11 @@ def amount(value) -> Decimal:
         return Decimal("0.00")
     s = str(value).replace(",", "").replace("₹", "").strip()
     try:
-        return Decimal(s or "0").quantize(_PAISE, rounding=ROUND_HALF_UP)
+        d = Decimal(s or "0")
+        if not d.is_finite():
+            raise InvalidOperation
     except InvalidOperation as e:
-        raise ValueError(f"not an amount: {value!r}") from e
+        raise ValueError("not an amount") from e
+    if abs(d) >= _MAX:
+        raise ValueError("amount too large")
+    return d.quantize(_PAISE, rounding=ROUND_HALF_UP)

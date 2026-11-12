@@ -39,7 +39,7 @@ Useful extras:
 
 ```bash
 # end-to-end check against a running stack
-SMOKE_EMAIL=... SMOKE_PASSWORD=... python scripts/smoke_test.py --base-url http://localhost:8080
+SMOKE_EMAIL=... SMOKE_PASSWORD=... python scripts/smoke_test.py --base-url http://127.0.0.1:8080
 # retrain from review decisions now (nightly it skips under 50 new decisions)
 docker compose -f deploy/docker-compose.yml run trainer --force
 # logs + Kibana dashboards (needs ~3GB more RAM), Kibana on http://localhost:5601
