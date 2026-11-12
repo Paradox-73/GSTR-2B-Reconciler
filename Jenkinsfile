@@ -95,13 +95,13 @@ pipeline {
             steps {
                 sh '''
                     for t in api worker trainer; do
-                        docker build --target "$t" \
+                        docker build --target "$t" --build-arg APP_VERSION="$SHA" \
                             -t "$DOCKERHUB_USER/gstr2b-$t:$SHA" \
                             -t "$DOCKERHUB_USER/gstr2b-$t:latest" .
                     done
-                    docker build \
+                    docker build --build-arg APP_VERSION="$SHA" \
                         -t "$DOCKERHUB_USER/gstr2b-frontend:$SHA" \
-                        -t "$DOCKERHUB_USER/gstr2b-frontend:latest"                         --build-arg APP_VERSION="$SHA" frontend
+                        -t "$DOCKERHUB_USER/gstr2b-frontend:latest" frontend
                 '''
             }
         }
