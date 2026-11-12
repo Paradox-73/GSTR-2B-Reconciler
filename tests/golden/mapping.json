@@ -1,0 +1,11 @@
+{
+ "invoice_date": "Date",
+ "supplier_name": "Particulars",
+ "supplier_gstin": "GSTIN/UIN",
+ "invoice_no": "Bill No",
+ "taxable": "Taxable Value",
+ "igst": "IGST",
+ "cgst": "CGST",
+ "sgst": "SGST",
+ "cess": "Cess"
+}
