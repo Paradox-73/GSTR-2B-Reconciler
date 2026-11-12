@@ -131,3 +131,26 @@ def run_reconciliation(run_id: str) -> None:
         logs.log("run_completed", duration_ms=round((time.perf_counter() - started) * 1000),
                  model_version=version, counts=counts,
                  invoices=len(books) + len(g2b))
+
+
+STUCK_AFTER_MINUTES = 15  # a 2000-invoice run takes ~1-2s, so this is very generous
+
+
+def reap_stuck_runs(now: datetime | None = None) -> int:
+    """Marks runs failed when their worker died mid-job, so the UI stops polling and the CA can
+    start a new run. Safe to call from every worker: it's one conditional UPDATE."""
+    from datetime import timedelta
+
+    from sqlalchemy import or_, update
+
+    cutoff = (now or datetime.now(UTC)) - timedelta(minutes=STUCK_AFTER_MINUTES)
+    engine()
+    with SessionLocal() as db:
+        n = db.execute(update(Run).where(
+            or_(Run.status == "running", Run.status == "queued"),
+            or_(Run.started_at < cutoff, Run.started_at.is_(None) & (Run.created_at < cutoff)))
+            .values(status="failed", error="WorkerLost", finished_at=datetime.now(UTC))).rowcount
+        db.commit()
+    if n:
+        logs.log("runs_reaped", logging.WARNING, count=n)
+    return n

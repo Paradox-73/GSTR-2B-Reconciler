@@ -23,7 +23,8 @@ def test_retrain_publish_and_hot_swap(client, auth, mlflow_store, monkeypatch):
     # some real decisions on the run created by test_full_flow
     cid = next(c["id"] for c in client.get(f"{V1}/clients", headers=auth).json()
                if c["name"] == "Acme")
-    run_id = client.get(f"{V1}/clients/{cid}/runs", headers=auth).json()[0]["id"]
+    run_id = next(r["id"] for r in client.get(f"{V1}/clients/{cid}/runs", headers=auth).json()
+                  if r["status"] == "done")
     items = client.get(f"{V1}/runs/{run_id}/results", headers=auth,
                        params={"category": "probable_match", "page_size": 500}).json()["items"]
     assert items
