@@ -30,7 +30,8 @@ from api.security import DUMMY_HASH, create_token, current_user, verify_password
 from api.settings import get_settings
 from api.tables import Client, InvoiceRow, MatchResult, ReviewDecision, Run, Upload, User
 from matcher import gstin as gst
-from matcher.models import Category
+from matcher.engine import compare
+from matcher.models import BOOKS, Category, Reason
 from matcher.notes import NoteLine, note
 from matcher.parsers import REQUIRED_COLUMNS
 
@@ -329,13 +330,34 @@ def vendor_notes(run_id: uuid.UUID, user: User = Depends(current_user),
     client = db.get(Client, run.client_id)
     by_supplier: dict[str, list[NoteLine]] = defaultdict(list)
     names: dict[str, str] = {}
-    for m in _run_results(run, db):
-        side = m.gstr2b or m.books
-        gstin = (m.books or m.gstr2b).supplier_gstin  # books GSTIN: that's who the CA writes to
-        names.setdefault(gstin, side.supplier_name)
-        by_supplier[gstin].append(NoteLine(tuple(m.reason_codes),
-                                           m.books and to_invoice(m.books),
-                                           m.gstr2b and to_invoice(m.gstr2b)))
+
+    def add(b: InvoiceRow | None, g: InvoiceRow | None, reasons) -> None:
+        gstin = (b or g).supplier_gstin  # books GSTIN: that's who the CA writes to
+        names.setdefault(gstin, (g or b).supplier_name)
+        by_supplier[gstin].append(NoteLine(tuple(reasons), b and to_invoice(b),
+                                           g and to_invoice(g)))
+
+    results = _run_results(run, db)
+    latest = {m.id: m.decisions[-1].decision if m.decisions else None for m in results}
+    # The CA's decisions win over the engine: a manual link pairs two "missing" invoices (from
+    # either side's result), and a rejected pair means the books invoice really is missing in 2B
+    linked_ids, linked_pairs = set(), []
+    for m in results:
+        if latest[m.id] == "link":
+            own, other = m.books or m.gstr2b, db.get(InvoiceRow, m.decisions[-1].linked_invoice_id)
+            b, g = (own, other) if own.source == BOOKS else (other, own)
+            if (b.id, g.id) not in {(x.id, y.id) for x, y in linked_pairs}:
+                linked_pairs.append((b, g))
+            linked_ids |= {b.id, g.id}
+    for b, g in linked_pairs:
+        add(b, g, compare(to_invoice(b), to_invoice(g), client.tolerance))
+    for m in results:
+        if latest[m.id] == "link" or {m.books_invoice_id, m.gstr2b_invoice_id} & linked_ids:
+            continue
+        if latest[m.id] == "reject" and m.books and m.gstr2b:
+            add(m.books, None, [Reason.MISSING_IN_2B])
+        else:
+            add(m.books, m.gstr2b, m.reason_codes)
     out = []
     for gstin in sorted(by_supplier):
         body = note(names[gstin], run.period, client.name, client.gstin, by_supplier[gstin])

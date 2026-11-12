@@ -38,8 +38,9 @@ def load_version(mv):
 
     from matcher.model import MatchModel
 
-    folder = mlflow.artifacts.download_artifacts(mv.source, dst_path=tempfile.mkdtemp())
-    model = MatchModel.load(Path(folder) / "matcher.json")
+    with tempfile.TemporaryDirectory() as tmp:  # the booster is in memory once loaded
+        folder = mlflow.artifacts.download_artifacts(mv.source, dst_path=tmp)
+        model = MatchModel.load(Path(folder) / "matcher.json")
     model.meta["version"] = f"r{mv.version}"
     return model
 
