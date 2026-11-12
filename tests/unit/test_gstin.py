@@ -5,7 +5,9 @@ import pytest
 from matcher import gstin
 
 # Publicly cited sample GSTINs that pass the GSTN checksum.
-VALID = ["27AAPFU0939F1ZV", "29AAGCB7383J1Z4"]
+# The 22... ones come from a real Jan-2022 portal download (see docs/gstr2b-schema.md).
+VALID = ["27AAPFU0939F1ZV", "29AAGCB7383J1Z4", "22AEZPA0778G1ZF", "22ATSPA3620P1ZL",
+         "22AAKFA7825M1Z8", "22AAEHV9549P1ZA"]
 
 
 @pytest.mark.parametrize("g", VALID)
