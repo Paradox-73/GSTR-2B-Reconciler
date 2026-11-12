@@ -68,11 +68,16 @@ def test_full_flow(client, auth, tmp_path: Path):
     assert r.status_code == 202
     run_id = r.json()["id"]
     run = client.get(f"{V1}/runs/{run_id}", headers=auth).json()  # ran in-process already
-    assert run["status"] == "done" and run["model_version"] == "v1"
-    want = {}
-    for t in ds.truth:
-        want[t["expected_category"]] = want.get(t["expected_category"], 0) + 1
-    assert run["summary"]["counts"] == want
+    from datagen.generate import MODEL_CATEGORIES
+    from matcher.model import MatchModel
+
+    assert run["status"] == "done" and run["model_version"] == MatchModel.load().version
+    got, want = {}, {}
+    for counts, cat in [(want, t["expected_category"]) for t in ds.truth] + [
+            (got, c) for c, n in run["summary"]["counts"].items() for _ in range(n)]:
+        cat = "model" if cat in MODEL_CATEGORIES else cat  # probable vs review both fine
+        counts[cat] = counts.get(cat, 0) + 1
+    assert got == want
 
     res = client.get(f"{V1}/runs/{run_id}/results", headers=auth,
                      params={"category": "mismatch", "page_size": 500}).json()

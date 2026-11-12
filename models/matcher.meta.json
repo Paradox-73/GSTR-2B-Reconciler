@@ -1,5 +1,5 @@
 {
- "version": "v1",
+ "version": "v2",
  "features": [
   "inv_lev_ratio",
   "inv_jaro_winkler",
@@ -31,11 +31,11 @@
   "nthread": 1
  },
  "rounds": 200,
- "trained_at": "2026-11-12T20:34:41+00:00",
- "git_sha": "5d137ff",
- "train_rows": 8898,
- "train_positives": 2093,
- "data_hash": "42e8111669e59398",
+ "trained_at": "2026-11-12T20:45:50+00:00",
+ "git_sha": "a956853",
+ "train_rows": 22110,
+ "train_positives": 3581,
+ "data_hash": "1deb87acc765a40f",
  "train_seeds": [
   100,
   159
@@ -44,8 +44,8 @@
   "precision": 1.0,
   "recall": 1.0,
   "f1": 1.0,
-  "model_pairs": 40,
-  "hard_pairs": 40,
-  "auto_matched": 40
+  "model_pairs": 62,
+  "hard_pairs": 62,
+  "auto_matched": 62
  }
 }
