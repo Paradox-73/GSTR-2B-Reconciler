@@ -2,6 +2,7 @@
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
+from enum import StrEnum
 
 from matcher import gstin as gst
 from matcher.normalise import invoice_no
@@ -40,3 +41,25 @@ class Invoice:
     @property
     def total(self) -> Decimal:
         return self.taxable + self.total_tax
+
+
+class Category(StrEnum):
+    MATCHED = "matched"
+    PROBABLE = "probable_match"
+    REVIEW = "needs_review"
+    MISMATCH = "mismatch"
+    MISSING_IN_2B = "missing_in_2b"
+    MISSING_IN_BOOKS = "missing_in_books"
+    ITC_NOT_AVAILABLE = "itc_not_available"
+
+
+class Reason(StrEnum):
+    VALUE_DIFF = "VALUE_DIFF"
+    TAX_DIFF = "TAX_DIFF"
+    TAX_HEAD_DIFF = "TAX_HEAD_DIFF"
+    DATE_DIFF = "DATE_DIFF"
+    INV_NO_FORMAT = "INV_NO_FORMAT"
+    GSTIN_TYPO = "GSTIN_TYPO"
+    MISSING_IN_2B = "MISSING_IN_2B"
+    MISSING_IN_BOOKS = "MISSING_IN_BOOKS"
+    ITC_INELIGIBLE = "ITC_INELIGIBLE"
