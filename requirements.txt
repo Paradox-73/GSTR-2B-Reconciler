@@ -1,0 +1,15 @@
+# Runtime deps for api, worker and trainer images
+fastapi==0.162.5
+uvicorn[standard]==0.54.0
+sqlalchemy==2.1.8
+alembic==1.20.1
+psycopg[binary]==3.3.9
+pyjwt==2.15.1
+bcrypt==5.0.0
+rq==3.0.0
+redis==8.1.0
+python-multipart==0.0.33
+pandas==3.0.6
+openpyxl==3.1.5
+pyyaml==6.0.3
+rapidfuzz==3.14.6
