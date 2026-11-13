@@ -70,7 +70,7 @@ A push to `main` starts the Jenkins job through the GitHub webhook ("GitHub hook
 | Scan | Trivy | a fixable CRITICAL CVE in any image |
 | Push | Docker Hub | push error |
 | Deploy | Ansible `app_deploy` role | migrations Job fails or a rollout is not healthy in time |
-| Smoke test | `scripts/smoke_test.py` | login, upload, a 2,000-invoice run or its result is wrong |
+| Smoke test | `scripts/smoke_test.py` | login, upload or a 20-invoice reconciliation fails, or its result is wrong |
 | Rollback | `kubectl rollout undo` | runs only after a failed smoke test, only on deployments this build changed |
 
 The same tests also run on every pull request in GitHub Actions, together with `kubectl kustomize`, `ansible-playbook --syntax-check` and `docker compose config` on the infra files.
