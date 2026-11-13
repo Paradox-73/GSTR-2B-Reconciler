@@ -70,7 +70,8 @@ spec:
             initialDelaySeconds: 30
             periodSeconds: 20
           resources:
-            requests: {cpu: 50m, memory: 128Mi}
+            # ~60 MiB in use with the two filtered jobs; the limit leaves room to grow.
+            requests: {cpu: 50m, memory: 64Mi}
             limits: {memory: 512Mi}
           volumeMounts:
             - {name: config, mountPath: /etc/prometheus}
