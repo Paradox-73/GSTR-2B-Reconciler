@@ -1,8 +1,10 @@
 # GSTR-2B Reconciler: Final Report
 
-CSE 816 Software Production Engineering, Capstone Project, 2026-27
-Team: Kanav Bhardwaj (Paradox-73), Bhavya Jain (Bhavzzzzzz)
-Repository: https://github.com/Paradox-73/GSTR-2B-Reconciler
+| | |
+|---|---|
+| Course | CSE 816 Software Production Engineering, Capstone Project, 2026-27 |
+| Team | Kanav Bhardwaj (Paradox-73), Bhavya Jain (Bhavzzzzzz) |
+| Repository | https://github.com/Paradox-73/GSTR-2B-Reconciler |
 
 > Draft. Sections marked TODO wait on open issues (#14 webhook, #67 Prometheus + Grafana, #26 rehearsal).
 
@@ -17,30 +19,33 @@ Real client data is confidential, so `datagen/` generates paired datasets with p
 ## 2. Architecture
 
 ```mermaid
-flowchart TB
-    subgraph Dev[Source + CI/CD]
+flowchart LR
+    subgraph CICD[CI/CD]
         GH[GitHub] -- webhook --> J[Jenkins]
         J -- images tagged with git sha --> DH[Docker Hub]
-        J -- ansible-playbook deploy.yml --> K
     end
-    subgraph K[Minikube: namespace gstr2b]
-        ING[Ingress] --> FE[frontend: React + Nginx]
-        ING -- /api --> API[api: FastAPI, HPA 2-4]
-        API --> PG[(PostgreSQL)]
-        API --> RD[(Redis queue)]
-        RD --> W[worker: matcher, HPA 1-5]
-        W --> PG
-        W -- polls every 60 s --> MLF[MLflow registry]
-        TR[trainer CronJob] --> MLF
-        TR --> PG
+    subgraph MK[minikube]
+        subgraph APP[namespace gstr2b]
+            ING[Ingress] --> FE[frontend: React + Nginx]
+            ING -- /api --> API[api: FastAPI, HPA 2-4]
+            API --> RD[(Redis queue)]
+            RD --> W[worker: matcher, HPA 1-5]
+            API --> PG[(PostgreSQL)]
+            W --> PG
+            W -- polls every 60 s --> MLF[MLflow registry]
+            TR[trainer CronJob] --> MLF
+        end
+        V[Vault: KV, Transit, K8s auth]
+        subgraph OBS[observability]
+            FB[Filebeat] --> LS[Logstash] --> ES[(Elasticsearch)] --> KB[Kibana]
+            PR[Prometheus] --> GF[Grafana]
+        end
     end
-    V[Vault: KV + Transit + K8s auth] -. secrets via agent injector .-> API
-    V -. secrets .-> W
-    API -. encrypts uploads .-> V
-    FB[Filebeat DaemonSet] --> LS[Logstash] --> ES[(Elasticsearch)] --> KB[Kibana]
-    PR[Prometheus] --> GF[Grafana]
-    PR -. scrapes /metrics .-> API
-    PR -. scrapes .-> W
+    J -- Ansible deploy --> APP
+    DH -- image pull --> APP
+    V -. secrets + upload encryption .-> APP
+    APP -. JSON logs .-> FB
+    PR -. scrapes /metrics .-> APP
 ```
 
 | Service | Why it is separate |
