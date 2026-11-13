@@ -24,6 +24,12 @@ from trainer.labels import Label, real_labels
 from trainer.train import TRAIN_SEEDS, git_sha, train
 
 
+def as_utc(ts: datetime) -> datetime:
+    """SQLite hands back naive UTC; Postgres hands back aware times in the session's timezone,
+    which isn't always UTC, so only label the naive ones."""
+    return ts.replace(tzinfo=UTC) if ts.tzinfo is None else ts.astimezone(UTC)
+
+
 def holdout_metrics(model: MatchModel, labels: list[Label]) -> dict:
     review = config.load()["review_threshold"]
     scores = model.score([(lb.books, lb.gstr2b) for lb in labels])
@@ -66,7 +72,7 @@ def retrain(force: bool) -> int:
     with SessionLocal() as db:
         labels = real_labels(db)
     since = datetime.fromtimestamp(prod.creation_timestamp / 1000, UTC) if prod else None
-    new = sum(1 for lb in labels if since is None or lb.decided_at.replace(tzinfo=UTC) > since)
+    new = sum(1 for lb in labels if since is None or as_utc(lb.decided_at) > since)
     if new < g["min_new_labels"] and not force:
         logs.log("trainer_skipped", new_labels=new, needed=g["min_new_labels"])
         return 0
