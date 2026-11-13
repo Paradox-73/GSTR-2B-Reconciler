@@ -123,3 +123,26 @@ def test_example_secrets_refused(monkeypatch):
     monkeypatch.setenv("JWT_SECRET", "CHANGE_ME_TO_AT_LEAST_32_RANDOM_CHARACTERS")
     with pytest.raises(RuntimeError, match="example value"):
         Settings().check_api()
+
+
+def test_export_summary_sheet_is_sanitised_too(client, auth):
+    from openpyxl import load_workbook
+
+    from datagen.generate import generate
+
+    ds = generate(seed=12, n_invoices=5, n_suppliers=2)
+    r = client.post(f"{V1}/clients", json={"name": "=1+1\x0bCo", "gstin": ds.recipient_gstin},
+                    headers=auth)
+    cid = r.json()["id"]
+    client.put(f"{V1}/clients/{cid}/mapping", json={"mapping": MAPPING}, headers=auth)
+    assert upload(client, auth, cid, "gstr2b", "2b.json",
+                  json.dumps(ds.gstr2b).encode()).status_code == 201
+    inv = ds.gstr2b["data"]["docdata"]["b2b"][0]
+    row = f'{inv["ctin"]},X,{inv["inv"][0]["inum"]},{inv["inv"][0]["dt"]},1,0,0,0\n'
+    assert upload(client, auth, cid, "books", "b.csv", (HEADER + row).encode()).status_code == 201
+    run_id = client.post(f"{V1}/clients/{cid}/runs", json={"period": "2025-04"},
+                         headers=auth).json()["id"]
+    r = client.get(f"{V1}/runs/{run_id}/export", headers=auth)
+    assert r.status_code == 200
+    name = load_workbook(io.BytesIO(r.content))["Summary"]["B1"]
+    assert name.value == "=1+1Co" and name.data_type == "s"
