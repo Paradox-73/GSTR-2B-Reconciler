@@ -13,3 +13,7 @@ app_deployments:
 
 app_rollout_timeout: 300s
 app_migration_timeout_s: 300
+
+# true once roles/vault has run and the KV secrets exist: deploys deploy/k8s-vault (secrets from
+# Vault through the agent injector, uploads encrypted with Transit) instead of deploy/k8s
+app_use_vault: false

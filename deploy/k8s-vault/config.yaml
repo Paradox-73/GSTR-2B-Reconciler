@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gstr2b-config
+data:
+  # Vault lives in its own namespace, hence the long name
+  VAULT_ADDR: http://vault.vault.svc:8200

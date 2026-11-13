@@ -127,3 +127,17 @@ Use `"command":["python","-m","trainer","--force"]` to retrain now regardless of
 (`command`, not `args`: the image has no ENTRYPOINT, so `args` would replace the whole command and
 the pod fails with `exec: "--bootstrap": executable file not found`. Tested on a k3s cluster.) The
 `trainer` CronJob does the nightly run (skips under 50 new decisions).
+
+## With Vault (`deploy/k8s-vault`)
+
+Once `roles/vault` has run and the KV secrets exist (`deploy/ansible/README.md`), deploy the Vault
+variant instead of the base: `kubectl apply -k deploy/k8s-vault`, or
+`ansible-playbook ... deploy.yml -e app_use_vault=true` (Jenkins: `APP_USE_VAULT=true`).
+
+What changes: the api and worker pods get a `vault-agent` sidecar that logs in with the pod's
+ServiceAccount and writes `/vault/secrets/{db,jwt,admin,token}`; the app reads them through
+`DATABASE_URL_FILE` etc. instead of the Kubernetes Secret, and `VAULT_ADDR` turns on Transit
+encryption, so files under `/data/uploads` start with `vault:v1:`. The `gstr2b-secrets` Secret
+is still needed for postgres itself and the migrations Job.
+
+Tested on k3s: smoke test passes, uploads land encrypted, Ansible rerun reports `changed=0`.

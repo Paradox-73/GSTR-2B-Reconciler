@@ -1,0 +1,11 @@
+# Vault variant of the app (#19). Apply this instead of deploy/k8s once roles/vault has run and the KV
+# secrets exist (deploy/ansible/README.md). The base stays usable before Vault is installed.
+#   kubectl apply -k deploy/k8s-vault        (app_deploy does this when app_use_vault is true)
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../k8s
+patches:
+  - path: api.yaml
+  - path: worker.yaml
+  - path: config.yaml

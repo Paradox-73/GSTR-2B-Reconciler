@@ -43,17 +43,25 @@
       register: app_render_dir
       changed_when: false  # scratch space, not a change to the cluster
 
+    # k8s/ and k8s-vault/ side by side, because the Vault overlay points at ../k8s
     - name: Copy the manifests into it
       ansible.builtin.copy:
-        src: "{{ k8s_dir }}/"
-        dest: "{{ app_render_dir.path }}/"
+        src: "{{ item }}/"
+        dest: "{{ app_render_dir.path }}/{{ item | basename }}/"
         mode: preserve
+      loop:
+        - "{{ k8s_dir }}"
+        - "{{ k8s_dir }}-vault"
       changed_when: false
+
+    - name: Pick the base or the Vault variant
+      ansible.builtin.set_fact:
+        app_apply_dir: "{{ app_render_dir.path }}/{{ 'k8s-vault' if app_use_vault | bool else 'k8s' }}"
 
     # lookup reads on the controller, which is this same machine (inventory: localhost).
     - name: Pin image tags in the scratch copy
       ansible.builtin.copy:
-        dest: "{{ app_render_dir.path }}/{{ item }}"
+        dest: "{{ app_render_dir.path }}/k8s/{{ item }}"
         content: "{{ lookup('ansible.builtin.file', k8s_dir ~ '/' ~ item) | from_yaml | combine({'images': app_kustomize_images}) | to_nice_yaml }}"
         mode: "0644"
       loop:
@@ -65,13 +73,13 @@
     # the postgres StatefulSet always prints "configured" even when nothing changes (seen on k3s),
     # which made every run report changed.
     - name: Check postgres for changes
-      ansible.builtin.command: "kubectl diff -k {{ app_render_dir.path }} -l app.kubernetes.io/name=postgres"
+      ansible.builtin.command: "kubectl diff -k {{ app_apply_dir }} -l app.kubernetes.io/name=postgres"
       register: app_pg_diff
       changed_when: false
       failed_when: app_pg_diff.rc > 1
 
     - name: Apply postgres
-      ansible.builtin.command: "kubectl apply -k {{ app_render_dir.path }} -l app.kubernetes.io/name=postgres"
+      ansible.builtin.command: "kubectl apply -k {{ app_apply_dir }} -l app.kubernetes.io/name=postgres"
       when: app_pg_diff.rc == 1
       changed_when: true
 
@@ -106,7 +114,7 @@
           changed_when: "'deleted' in app_job_delete.stdout"
 
         - name: Start the migrations Job
-          ansible.builtin.command: "kubectl apply -k {{ app_render_dir.path }}/migrations"
+          ansible.builtin.command: "kubectl apply -k {{ app_render_dir.path }}/k8s/migrations"
 
         - name: Wait for the migrations Job to finish
           ansible.builtin.command:
@@ -138,13 +146,13 @@
           when: "'Complete' not in app_migration_state.stdout"
 
     - name: Check all manifests for changes
-      ansible.builtin.command: "kubectl diff -k {{ app_render_dir.path }}"
+      ansible.builtin.command: "kubectl diff -k {{ app_apply_dir }}"
       register: app_diff
       changed_when: false
       failed_when: app_diff.rc > 1
 
     - name: Apply all manifests
-      ansible.builtin.command: "kubectl apply -k {{ app_render_dir.path }}"
+      ansible.builtin.command: "kubectl apply -k {{ app_apply_dir }}"
       when: app_diff.rc == 1
       changed_when: true
 
