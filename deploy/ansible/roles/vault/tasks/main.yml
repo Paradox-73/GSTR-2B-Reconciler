@@ -3,6 +3,40 @@
     name: hashicorp
     repo_url: https://helm.releases.hashicorp.com
 
+# Dev mode's default root token is the well-known "root", and Vault is reachable on the node
+# (NodePort, for Jenkins). Use a random one instead, kept in a Secret so every run of this role,
+# from any machine, reuses it. The role itself never needs it: inside vault-0 the CLI is already
+# logged in as root in dev mode.
+- name: Create the Vault namespace
+  kubernetes.core.k8s:
+    api_version: v1
+    kind: Namespace
+    name: "{{ vault_namespace }}"
+    state: present
+
+- name: Read the dev root token
+  ansible.builtin.command: >-
+    kubectl -n {{ vault_namespace }} get secret vault-dev-root-token -o jsonpath={.data.token}
+  register: vault_root_token_now
+  changed_when: false
+  failed_when: false
+  no_log: true
+
+- name: Pick the dev root token
+  ansible.builtin.set_fact:
+    vault_dev_root_token: >-
+      {{ (vault_root_token_now.stdout | b64decode) if vault_root_token_now.rc == 0
+         else lookup('ansible.builtin.password', '/dev/null', length=32, chars=['ascii_letters', 'digits']) }}
+  no_log: true
+
+- name: Save a new dev root token
+  ansible.builtin.command:
+    cmd: kubectl -n {{ vault_namespace }} create secret generic vault-dev-root-token --from-file=token=/dev/stdin
+    stdin: "{{ vault_dev_root_token }}"
+    stdin_add_newline: false
+  when: vault_root_token_now.rc != 0
+  no_log: true
+
 - name: Install Vault with the Agent Injector
   kubernetes.core.helm:
     name: vault
@@ -15,6 +49,8 @@
       server:
         dev:
           enabled: "{{ vault_dev_mode }}"
+          # Takes effect when vault-0 next starts (the chart's StatefulSet uses OnDelete).
+          devRootToken: "{{ vault_dev_root_token }}"
         # Jenkins runs outside the cluster and reads the Docker Hub token from Vault, so Vault
         # gets a fixed port on the node: http://<node ip>:30820.
         service:

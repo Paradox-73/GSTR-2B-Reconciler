@@ -26,7 +26,7 @@ the container can reach. Test with
 
 ## Docker Hub token in Vault
 
-The Push stage reads the Docker Hub user and token from Vault (`secret/jenkins/dockerhub`) with
+The Push stage reads the Docker Hub token from Vault (`secret/jenkins/dockerhub`) with
 the Jenkins Vault plugin; Jenkins logs in with an AppRole and stores no token of its own.
 
 1. Pick two random strings for `VAULT_ROLE_ID` and `VAULT_SECRET_ID` in `.env`
