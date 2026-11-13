@@ -7,7 +7,7 @@ import MappingForm from '../components/MappingForm.jsx';
 
 const UPLOADS = [
   { kind: 'gstr2b', title: 'GSTR-2B', hint: 'JSON downloaded from the GST portal', accept: '.json,application/json' },
-  { kind: 'books', title: 'Purchase register', hint: 'Excel (.xlsx) or CSV export from Tally / Excel', accept: '.xlsx,.xls,.csv' },
+  { kind: 'books', title: 'Purchase register', hint: 'Excel (.xlsx) or CSV export from Tally / Excel', accept: '.xlsx,.csv' },
 ];
 
 export default function ClientPage() {
