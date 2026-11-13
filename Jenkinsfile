@@ -164,21 +164,20 @@ pipeline {
             }
         }
 
-        // Host network so the container can reach the minikube IP. Login comes from the
-        // 'smoke-user' username/password credential (the ADMIN_EMAIL / ADMIN_PASSWORD user).
+        // Runs on the Jenkins machine, not in a docker agent: in a test run the agent container
+        // got neither APP_URL nor the credential variables. Login comes from the 'smoke-user'
+        // credential (the app's ADMIN_EMAIL / ADMIN_PASSWORD).
         stage('Smoke test') {
-            agent {
-                docker {
-                    image 'python:3.12-slim'
-                    args '--network host'
-                    reuseNode true
-                }
-            }
             steps {
                 withCredentials([usernamePassword(credentialsId: 'smoke-user',
                                                   usernameVariable: 'SMOKE_EMAIL',
                                                   passwordVariable: 'SMOKE_PASSWORD')]) {
-                    sh '. .venv/bin/activate && python scripts/smoke_test.py --base-url "$APP_URL"'
+                    sh '''
+                        python3 -m venv .smoke-venv
+                        . .smoke-venv/bin/activate
+                        pip install -q httpx==0.28.1 pandas==3.0.6
+                        python scripts/smoke_test.py --base-url "$APP_URL"
+                    '''
                 }
             }
         }
