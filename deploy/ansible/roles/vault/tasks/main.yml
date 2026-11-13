@@ -200,11 +200,14 @@
         stdin: "{{ vault_jenkins_policy }}"
       when: vault_jenkins_policy_now.stdout | trim != vault_jenkins_policy | trim
 
-    # Short-lived tokens: a build logs in, reads the secret and is done.
+    # The Jenkins plugin caches its Vault token until the token's TTL runs out. After a dev-mode
+    # restart that cached token is dead, so a long TTL meant pushes failing with "access denied"
+    # for up to the whole TTL. A build reads the secret once at the start of Push, so 60s is
+    # plenty and bounds that window to a minute.
     - name: Create the Jenkins AppRole with its fixed role id
       ansible.builtin.command: "{{ vault_cli }} write {{ item }}"
       loop:
-        - auth/approle/role/jenkins token_policies=gstr2b-jenkins token_ttl=20m token_max_ttl=1h
+        - auth/approle/role/jenkins token_policies=gstr2b-jenkins token_ttl=60s token_max_ttl=5m
         - auth/approle/role/jenkins/role-id role_id={{ vault_jenkins_role_id }}
       changed_when: false # overwrites with the same values on every run
 

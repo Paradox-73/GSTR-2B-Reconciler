@@ -35,6 +35,10 @@ the Jenkins Vault plugin; Jenkins logs in with an AppRole and stores no token of
    `ansible-playbook -i deploy/ansible/inventory/hosts.ini deploy/ansible/site.yml --tags vault -e vault_jenkins_role_id=<VAULT_ROLE_ID> -e vault_jenkins_secret_id=<VAULT_SECRET_ID> -e dockerhub_user=<user> -e dockerhub_token=<token>`
 3. Test from the Jenkins container: `curl -s $VAULT_ADDR/v1/sys/health` answers JSON.
 
+After a Vault restart, give it a minute before the next build: Jenkins keeps its Vault token
+until the token expires (60 s), and a token from before the restart is refused ("Access denied
+to Vault path").
+
 The AppRole's policy reads that one path only, and the path sits outside `secret/gstr2b/`, which
 the app pods can read.
 
