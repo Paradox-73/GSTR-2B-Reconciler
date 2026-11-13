@@ -32,3 +32,27 @@ jobs:
       - run: npm ci
       - run: npm test -- --run
       - run: npm run build
+
+  # Renders/validates the deploy files so a broken manifest or playbook fails the PR, not the demo.
+  infra:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: kustomize builds
+        run: |
+          kubectl kustomize deploy/k8s > /dev/null
+          kubectl kustomize deploy/k8s/migrations > /dev/null
+          kubectl kustomize deploy/k8s-vault > /dev/null
+      - name: ansible syntax
+        run: |
+          pip install -q ansible-core==2.17.7
+          ansible-galaxy collection install -r deploy/ansible/requirements.yml > /dev/null
+          cd deploy/ansible
+          ansible-playbook --syntax-check -i inventory/hosts.ini site.yml
+          ansible-playbook --syntax-check -i inventory/hosts.ini deploy.yml
+      - name: compose files parse
+        run: |
+          cp deploy/.env.example deploy/.env
+          docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.elk.yml config -q
+          cp deploy/jenkins/.env.example deploy/jenkins/.env
+          docker compose -f deploy/jenkins/docker-compose.yml config -q
