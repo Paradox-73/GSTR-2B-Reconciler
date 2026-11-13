@@ -131,3 +131,18 @@ def test_admin_created_late_by_readyz(client, monkeypatch):
         assert main._admin_ready
     finally:
         main.get_settings.cache_clear()
+
+
+def test_worker_poll_writes_heartbeat(tmp_path, monkeypatch):
+    import threading
+
+    from api import jobs, worker
+
+    beat = tmp_path / "alive"
+    monkeypatch.setattr(worker, "HEARTBEAT", beat)
+    monkeypatch.setattr(jobs.models, "refresh", lambda: None)
+    monkeypatch.setattr(jobs, "reap_stuck_runs", lambda: 0)
+    stop = threading.Event()
+    stop.set()  # one loop, then return
+    worker.poll(stop)
+    assert beat.exists()
