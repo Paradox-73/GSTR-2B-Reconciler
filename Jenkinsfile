@@ -150,6 +150,14 @@ pipeline {
 
         stage('Deploy') {
             steps {
+                // What each Deployment ran before this build, so the rollback can tell whether
+                // this build actually rolled anything out (a rebuild of the live sha doesn't).
+                sh '''
+                    kubectl -n "$NAMESPACE" get deployment api worker frontend \
+                        -o jsonpath='{range .items[*]}{.metadata.name}={.spec.template.spec.containers[0].image}{"\\n"}{end}' \
+                        > pre-deploy-images.txt || true
+                    cat pre-deploy-images.txt
+                '''
                 script {
                     env.DEPLOY_STARTED = 'true'
                 }
@@ -187,10 +195,18 @@ pipeline {
         failure {
             script {
                 if (env.DEPLOY_STARTED == 'true') {
-                    // Only undo Deployments already running this build's image: if migrations
-                    // failed, nothing rolled out, and an undo would revert a healthy release.
+                    // Only undo Deployments this build moved onto its image. If migrations failed,
+                    // nothing rolled out; if a Deployment was already on this sha before the deploy
+                    // (a rebuild), an undo would revert the healthy release that's live.
                     sh '''
                         for d in api worker frontend; do
+                            before=$(sed -n "s/^$d=//p" pre-deploy-images.txt 2>/dev/null)
+                            case "$before" in
+                                *":$SHA")
+                                    echo "skipped rollback of $d: already on $SHA before this deploy"
+                                    continue
+                                    ;;
+                            esac
                             img=$(kubectl -n "$NAMESPACE" get deployment "$d" \
                                 -o jsonpath='{.spec.template.spec.containers[0].image}')
                             case "$img" in
