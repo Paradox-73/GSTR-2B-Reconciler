@@ -60,13 +60,15 @@ spec:
             initialDelaySeconds: 20
             periodSeconds: 10
             timeoutSeconds: 5
+          # 512m heap plus Elasticsearch's off-heap memory went past 1Gi and got OOMKilled on a
+          # test cluster
           resources:
             requests:
               cpu: 200m
               memory: 1Gi
             limits:
               cpu: "1"
-              memory: 1Gi
+              memory: 1536Mi
           volumeMounts:
             - name: data
               mountPath: /usr/share/elasticsearch/data
