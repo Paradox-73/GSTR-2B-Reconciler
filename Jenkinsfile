@@ -128,10 +128,11 @@ pipeline {
 
         stage('Push') {
             steps {
-                // Moves to the Jenkins Vault plugin in issue #19.
-                withCredentials([usernamePassword(credentialsId: 'dockerhub',
-                                                  usernameVariable: 'DOCKERHUB_LOGIN',
-                                                  passwordVariable: 'DOCKERHUB_TOKEN')]) {
+                // The Docker Hub login comes from Vault (Jenkins Vault plugin, AppRole login set up
+                // in deploy/jenkins/casc.yaml); Jenkins itself stores no Docker Hub token.
+                withVault(vaultSecrets: [[path: 'secret/jenkins/dockerhub', engineVersion: 2,
+                                          secretValues: [[envVar: 'DOCKERHUB_LOGIN', vaultKey: 'username'],
+                                                         [envVar: 'DOCKERHUB_TOKEN', vaultKey: 'token']]]]) {
                     sh '''
                         echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_LOGIN" --password-stdin $REGISTRY
                         for i in $IMAGES; do

@@ -15,6 +15,11 @@
       server:
         dev:
           enabled: "{{ vault_dev_mode }}"
+        # Jenkins runs outside the cluster and reads the Docker Hub token from Vault, so Vault
+        # gets a fixed port on the node: http://<node ip>:30820.
+        service:
+          type: NodePort
+          nodePort: 30820
       injector:
         enabled: true
 
@@ -134,3 +139,64 @@
   loop: "{{ vault_kv_present.results }}"
   when: vault_app_secret.rc == 0 and item.rc != 0
   no_log: true
+
+# Jenkins reads the Docker Hub token from Vault (Jenkins Vault plugin, deploy/jenkins/casc.yaml).
+# Run with -e vault_jenkins_role_id=... -e vault_jenkins_secret_id=... (the values in
+# deploy/jenkins/.env), plus -e dockerhub_user=... -e dockerhub_token=... to store the token.
+- name: Give Jenkins read access to the Docker Hub secret
+  when: vault_jenkins_role_id | length > 0 and vault_jenkins_secret_id | length > 0
+  block:
+    - name: Enable AppRole auth
+      ansible.builtin.command: "{{ vault_cli }} auth enable approle"
+      register: vault_approle
+      changed_when: vault_approle.rc == 0
+      failed_when: vault_approle.rc != 0 and 'path is already in use' not in vault_approle.stderr
+
+    - name: Read the Jenkins policy
+      ansible.builtin.command: "{{ vault_cli }} policy read gstr2b-jenkins"
+      register: vault_jenkins_policy_now
+      changed_when: false
+      failed_when: false
+
+    - name: Write the Jenkins policy if it is missing or changed
+      ansible.builtin.command:
+        cmd: "{{ vault_cli }} policy write gstr2b-jenkins -"
+        stdin: "{{ vault_jenkins_policy }}"
+      when: vault_jenkins_policy_now.stdout | trim != vault_jenkins_policy | trim
+
+    # Short-lived tokens: a build logs in, reads the secret and is done.
+    - name: Create the Jenkins AppRole with its fixed role id
+      ansible.builtin.command: "{{ vault_cli }} write {{ item }}"
+      loop:
+        - auth/approle/role/jenkins token_policies=gstr2b-jenkins token_ttl=20m token_max_ttl=1h
+        - auth/approle/role/jenkins/role-id role_id={{ vault_jenkins_role_id }}
+      changed_when: false # overwrites with the same values on every run
+
+    - name: Register Jenkins' secret id
+      ansible.builtin.command:
+        cmd: "{{ vault_cli }} write auth/approle/role/jenkins/custom-secret-id secret_id=-"
+        stdin: "{{ vault_jenkins_secret_id }}"
+        stdin_add_newline: false
+      register: vault_jenkins_sid
+      changed_when: vault_jenkins_sid.rc == 0
+      failed_when: vault_jenkins_sid.rc != 0 and 'already registered' not in vault_jenkins_sid.stderr
+      no_log: true
+
+    - name: Read the stored Docker Hub secret
+      ansible.builtin.command: "{{ vault_cli }} kv get -format=json {{ vault_dockerhub_path }}"
+      register: vault_dockerhub_now
+      changed_when: false
+      failed_when: false
+      no_log: true
+      when: dockerhub_token | length > 0
+
+    - name: Store the Docker Hub user and token if missing or changed
+      ansible.builtin.command:
+        cmd: "{{ vault_cli }} kv put {{ vault_dockerhub_path }} -"
+        stdin: "{{ vault_dockerhub_want | to_json }}"
+      vars:
+        vault_dockerhub_want: {username: "{{ dockerhub_user }}", token: "{{ dockerhub_token }}"}
+      when: >-
+        dockerhub_token | length > 0 and (vault_dockerhub_now.rc != 0 or
+        (vault_dockerhub_now.stdout | from_json).data.data != vault_dockerhub_want)
+      no_log: true
