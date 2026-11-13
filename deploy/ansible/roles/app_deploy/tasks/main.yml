@@ -72,22 +72,23 @@
     # kubectl diff exits 1 when something would change. Checked instead of apply's output because
     # the postgres StatefulSet always prints "configured" even when nothing changes (seen on k3s),
     # which made every run report changed.
-    - name: Check postgres for changes
-      ansible.builtin.command: "kubectl diff -k {{ app_apply_dir }} -l app.kubernetes.io/name=postgres"
+    - name: Check postgres, redis and the ConfigMap for changes
+      ansible.builtin.command: "kubectl diff -k {{ app_apply_dir }} -l 'app.kubernetes.io/name in (postgres,redis,gstr2b-config)'"
       register: app_pg_diff
       changed_when: false
       failed_when: app_pg_diff.rc > 1
 
-    - name: Apply postgres
-      ansible.builtin.command: "kubectl apply -k {{ app_apply_dir }} -l app.kubernetes.io/name=postgres"
+    - name: Apply postgres, redis and the ConfigMap
+      ansible.builtin.command: "kubectl apply -k {{ app_apply_dir }} -l 'app.kubernetes.io/name in (postgres,redis,gstr2b-config)'"
       when: app_pg_diff.rc == 1
       changed_when: true
 
-    - name: Wait for postgres
+    - name: Wait for postgres and redis
       ansible.builtin.command: >-
-        kubectl -n {{ app_namespace }} rollout status statefulset/postgres
+        kubectl -n {{ app_namespace }} rollout status statefulset/{{ item }}
         --timeout={{ app_rollout_timeout }}
       changed_when: false
+      loop: [postgres, redis]
 
     - name: Read the last migrations run
       ansible.builtin.command:
