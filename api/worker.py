@@ -17,18 +17,20 @@ POLL_SECONDS = int(os.environ.get("MODEL_POLL_SECONDS", "60"))
 
 
 def poll(stop: threading.Event) -> None:
-    while not stop.wait(POLL_SECONDS):
+    while True:
         jobs.models.refresh()
         try:
             jobs.reap_stuck_runs()
         except Exception:  # a DB blip must not kill the poller thread
             logs.log("reap_failed", 30, exc_info=True)
+        if stop.wait(POLL_SECONDS):
+            return
 
 
 def main() -> None:
     logs.setup()
     logs.log("app_started", version=os.environ.get("APP_VERSION", "dev"))
-    jobs.models.refresh()
+    jobs.models.get()  # baked-in model now; the poller swaps in the registry's one when it can
     stop = threading.Event()
     threading.Thread(target=poll, args=(stop,), daemon=True, name="model-poller").start()
     try:

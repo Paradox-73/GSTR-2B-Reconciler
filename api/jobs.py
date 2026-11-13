@@ -33,8 +33,10 @@ class ModelHolder:
         self.bad_version = None  # a promoted version that failed to load: don't refetch it
 
     def get(self):
+        # Never wait on MLflow here: a job uses the baked-in model until the poller swaps in
+        # the registry one. MLflow being down must not stop reconciliations.
         if not self.loaded:
-            self.refresh()
+            self._load_bundled()
         return self.model
 
     def refresh(self) -> None:

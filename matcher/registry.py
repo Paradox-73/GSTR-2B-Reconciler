@@ -19,6 +19,9 @@ def enabled() -> bool:
 def client():
     from mlflow import MlflowClient  # imported lazily: the api never needs mlflow
 
+    # MLflow's default is minutes of retries per call; a poll every 60s doesn't need that
+    os.environ.setdefault("MLFLOW_HTTP_REQUEST_MAX_RETRIES", "1")
+    os.environ.setdefault("MLFLOW_HTTP_REQUEST_TIMEOUT", "10")
     return MlflowClient()
 
 
