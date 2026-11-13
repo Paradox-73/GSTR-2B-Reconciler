@@ -57,10 +57,12 @@ services:
   mlflow:
     image: ghcr.io/mlflow/mlflow:v3.18.0
     command: >-
-      mlflow server --host 0.0.0.0 --port 5000
+      mlflow server --host 0.0.0.0 --port 5000 --workers 1
       --backend-store-uri sqlite:////mlflow/mlflow.db
       --artifacts-destination /mlflow/artifacts --serve-artifacts
       --allowed-hosts "mlflow:5000,localhost:5000,127.0.0.1:5000"
+    environment:
+      MLFLOW_SERVER_ENABLE_JOB_EXECUTION: "false"  # unused job runner: ~1.8GB -> ~0.5GB
     volumes: [mlflow:/mlflow]
     ports: ["127.0.0.1:5000:5000"]
     healthcheck:
