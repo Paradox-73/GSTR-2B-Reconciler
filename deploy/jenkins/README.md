@@ -43,7 +43,7 @@ restart. Set `JENKINS_URL` in `.env` to the tunnel URL too, so build links point
 ## Tested
 
 On a k3s test cluster, with a local registry standing in for Docker Hub
-(`REGISTRY=DOCKERHUB_USER=localhost:5001`), the job came up from `casc.yaml` alone and the full
+(`REGISTRY` and `DOCKERHUB_USER` both `localhost:5001`), the job came up from `casc.yaml` alone and the full
 pipeline passed (build #4, 255 s): tests, golden set, model gate, build, Trivy, push, Ansible
 deploy in Vault mode, smoke test. Earlier runs found and fixed: `COPY --chmod` needs BuildKit (the
 image now has buildx), 3 critical CVEs in the frontend base image, the smoke test's env vars
