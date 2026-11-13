@@ -113,3 +113,21 @@ def test_broken_model_version_not_refetched(monkeypatch):
     holder.refresh()
     holder.refresh()
     assert fetches["n"] == 1 and holder.get() is not None  # fell back to the bundled model
+
+
+def test_admin_created_late_by_readyz(client, monkeypatch):
+    """Fresh cluster: the api starts before migrations, so the first seed attempt fails."""
+    from api import main
+    from api.db import SessionLocal
+    from api.tables import User
+
+    monkeypatch.setenv("ADMIN_EMAIL", "late-admin@example.com")
+    monkeypatch.setattr(main, "_admin_ready", False)
+    main.get_settings.cache_clear()
+    try:
+        assert client.get("/readyz").status_code == 200
+        with SessionLocal() as db:
+            assert db.query(User).filter(User.email == "late-admin@example.com").one()
+        assert main._admin_ready
+    finally:
+        main.get_settings.cache_clear()

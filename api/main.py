@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import select, text
+from sqlalchemy.exc import IntegrityError
 
 from api import logs, storage
 from api.db import SessionLocal, engine
@@ -15,18 +16,25 @@ from api.security import hash_password
 from api.settings import get_settings
 from api.tables import User
 
+_admin_ready = False
+
 
 def ensure_admin() -> None:
     """Creates the first user from ADMIN_EMAIL / ADMIN_PASSWORD if it doesn't exist yet."""
+    global _admin_ready
     s = get_settings()
-    if not (s.admin_email and s.admin_password):
-        return
-    email = s.admin_email.strip().lower()
-    with SessionLocal() as db:
-        if db.scalar(select(User).where(User.email == email)) is None:
-            db.add(User(email=email, password_hash=hash_password(s.admin_password), role="admin"))
-            db.commit()
-            logs.log("admin_created")
+    if s.admin_email and s.admin_password:
+        email = s.admin_email.strip().lower()
+        with SessionLocal() as db:
+            if db.scalar(select(User).where(User.email == email)) is None:
+                db.add(User(email=email, password_hash=hash_password(s.admin_password),
+                            role="admin"))
+                try:
+                    db.commit()
+                    logs.log("admin_created")
+                except IntegrityError:  # another replica created it first
+                    db.rollback()
+    _admin_ready = True
 
 
 def retention_loop(stop: threading.Event) -> None:
@@ -49,8 +57,8 @@ async def lifespan(app: FastAPI):
     engine()
     try:
         ensure_admin()
-    except Exception:  # table missing before migrations ran; readyz will report it
-        logs.log("admin_seed_skipped", exc_info=True)
+    except Exception:  # tables missing until migrations run; /readyz retries it
+        logs.log("admin_seed_deferred")
     stop = threading.Event()
     threading.Thread(target=retention_loop, args=(stop,), daemon=True, name="retention").start()
     yield
@@ -93,6 +101,8 @@ def readyz():
     try:
         with engine().connect() as c:
             c.execute(text("SELECT 1 FROM users LIMIT 1"))  # also proves migrations ran
+        if not _admin_ready:  # on a fresh cluster the api can start before the migrations Job
+            ensure_admin()
         checks["db"] = "ok"
     except Exception as e:
         checks["db"] = type(e).__name__
