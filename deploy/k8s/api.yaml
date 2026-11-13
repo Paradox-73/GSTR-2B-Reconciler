@@ -55,6 +55,12 @@ spec:
       containers:
         - name: api
           image: DOCKERHUB_USER/gstr2b-api:latest
+          # Keep serving while the ingress drops this pod from its endpoints; without it a
+          # rollout under k6 load failed 18 of ~1900 UI requests on a test cluster
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "10"]
           ports:
             - name: http
               containerPort: 8000
