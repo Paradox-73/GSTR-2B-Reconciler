@@ -25,7 +25,7 @@ before each api rollout, and as a one-shot service in compose.
 | `DATABASE_URL` | api, worker, migrations, trainer | `postgresql+psycopg://gstr2b:<pw>@postgres:5432/gstr2b` | yes |
 | `REDIS_URL` | api, worker | `redis://redis:6379/0` | no |
 | `JWT_SECRET` | api | 32+ random chars | yes |
-| `ADMIN_EMAIL`, `ADMIN_PASSWORD` | api (creates the first user at startup if missing) | | password yes |
+| `ADMIN_EMAIL`, `ADMIN_PASSWORD` | api (creates the first user at startup if missing) | password at most 72 bytes (bcrypt limit) | password yes |
 | `UPLOAD_DIR` | api | `/data/uploads` (volume, writable by uid 10001) | no |
 | `LOG_LEVEL` | all | `INFO` | no |
 | `RETENTION_DAYS` | api (deletes uploaded files older than this, hourly) | `90` | no |

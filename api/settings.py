@@ -31,6 +31,11 @@ class Settings:
                             ("ADMIN_PASSWORD", self.admin_password)):
             if value and "CHANGE_ME" in value:
                 raise RuntimeError(f"{name} still has the example value; set a real one")
+        # bcrypt can't hash more than 72 bytes. Without this the admin seed fails on every
+        # /readyz and the pod never goes ready, with nothing in the logs saying why.
+        if self.admin_password and len(self.admin_password.encode()) > 72:
+            raise RuntimeError("ADMIN_PASSWORD is longer than 72 bytes, which bcrypt can't "
+                               "hash; use a shorter one")
 
 
 @lru_cache

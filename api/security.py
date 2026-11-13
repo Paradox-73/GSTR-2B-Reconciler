@@ -14,6 +14,10 @@ from api.tables import User
 _bearer = HTTPBearer(auto_error=False)
 
 
+# bcrypt only looks at the first 72 bytes, and bcrypt 5 raises instead of truncating
+MAX_PASSWORD_BYTES = 72
+
+
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
@@ -22,7 +26,10 @@ DUMMY_HASH = bcrypt.hashpw(b"not-a-real-password", bcrypt.gensalt()).decode()
 
 
 def verify_password(password: str, hashed: str) -> bool:
-    return bcrypt.checkpw(password.encode(), hashed.encode())
+    raw = password.encode()
+    if len(raw) > MAX_PASSWORD_BYTES:  # can't be a password we stored, so it's just wrong
+        return False
+    return bcrypt.checkpw(raw, hashed.encode())
 
 
 def create_token(user: User) -> str:
