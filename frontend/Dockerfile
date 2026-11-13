@@ -11,6 +11,7 @@ RUN npm run build
 FROM nginxinc/nginx-unprivileged:1.27-alpine
 COPY nginx/default.conf.template nginx/api-proxy.locations.template /etc/nginx/templates/
 COPY nginx/40-api-proxy.sh /docker-entrypoint.d/
+COPY nginx/security-headers.conf /etc/nginx/snippets/
 # chmod in a RUN, not COPY --chmod: that flag needs BuildKit and broke the build in a Jenkins
 # that only had the legacy builder
 USER root
