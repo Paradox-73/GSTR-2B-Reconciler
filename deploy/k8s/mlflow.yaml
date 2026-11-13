@@ -56,6 +56,11 @@ spec:
             - --artifacts-destination=/mlflow/artifacts
             - --serve-artifacts
             - --allowed-hosts=*
+          env:
+            # MLflow 3's background job runner (unused here) took memory from ~500Mi to ~1.8Gi and
+            # got the pod OOMKilled on a test cluster
+            - name: MLFLOW_SERVER_ENABLE_JOB_EXECUTION
+              value: "false"
           ports:
             - name: http
               containerPort: 5000
@@ -80,10 +85,10 @@ spec:
           resources:
             requests:
               cpu: 100m
-              memory: 256Mi
+              memory: 512Mi
             limits:
-              cpu: 500m
-              memory: 768Mi
+              cpu: "1"
+              memory: 1Gi
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:

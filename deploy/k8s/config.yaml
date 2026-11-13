@@ -8,6 +8,9 @@ data:
   UPLOAD_DIR: /data/uploads
   LOG_LEVEL: INFO
   MLFLOW_TRACKING_URI: http://mlflow:5000
-  # Vault runs in its own namespace (roles/vault), so the short name "vault" does not resolve here.
-  VAULT_ADDR: http://vault.vault.svc:8200
+  # Turn on only after roles/vault has run (#19). With VAULT_ADDR set the api encrypts every upload
+  # through Vault and answers 503 if it can't reach it, so setting it before Vault exists breaks
+  # all uploads. Vault lives in its own namespace, hence the long name. The api also needs
+  # VAULT_TOKEN_FILE=/vault/secrets/token from the agent injector.
+  # VAULT_ADDR: http://vault.vault.svc:8200
   ADMIN_EMAIL: admin@example.com

@@ -36,8 +36,9 @@ spec:
       automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
-        runAsUser: 10001
-        runAsGroup: 10001
+        # nginx-unprivileged's own user: it writes /etc/nginx/conf.d at startup (envsubst)
+        runAsUser: 101
+        runAsGroup: 101
         seccompProfile:
           type: RuntimeDefault
       containers:
