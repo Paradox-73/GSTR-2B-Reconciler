@@ -3,6 +3,9 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: gstr2b-config
+  labels:
+    # applied together with postgres, before the migrations Job reads it
+    app.kubernetes.io/name: gstr2b-config
 data:
   REDIS_URL: redis://redis:6379/0
   UPLOAD_DIR: /data/uploads

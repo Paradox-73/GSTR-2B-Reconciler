@@ -58,9 +58,10 @@ By hand, first put your Docker Hub user in each `newName` under `images:` in
 `kustomization.yaml` and `migrations/kustomization.yaml` (do not commit that edit), then:
 
 ```bash
-# 1. database first, because migrations need it
-kubectl apply -k deploy/k8s -l app.kubernetes.io/name=postgres
+# 1. database, redis + ConfigMap first: migrations need postgres + the ConfigMap, workers exit if redis is missing
+kubectl apply -k deploy/k8s -l 'app.kubernetes.io/name in (postgres,redis,gstr2b-config)'
 kubectl -n gstr2b rollout status statefulset/postgres
+kubectl -n gstr2b rollout status statefulset/redis
 
 # 2. migrations (a Job cannot be changed after creation, so delete the old one)
 kubectl -n gstr2b delete job migrations --ignore-not-found
