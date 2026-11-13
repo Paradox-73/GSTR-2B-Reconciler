@@ -7,6 +7,7 @@ child, which is why the default forking worker isn't used.
 """
 import os
 import threading
+from pathlib import Path
 
 from redis import Redis
 from rq import SimpleWorker
@@ -14,10 +15,14 @@ from rq import SimpleWorker
 from api import jobs, logs
 
 POLL_SECONDS = int(os.environ.get("MODEL_POLL_SECONDS", "60"))
+# Probes check this file's age with a shell one-liner. Probing by starting Python and importing
+# rq every 15s cost ~100m CPU per idle pod, which alone kept the HPA at 5 replicas.
+HEARTBEAT = Path(os.environ.get("WORKER_HEARTBEAT", "/tmp/worker-alive"))
 
 
 def poll(stop: threading.Event) -> None:
     while True:
+        HEARTBEAT.touch()
         jobs.models.refresh()
         try:
             jobs.reap_stuck_runs()
