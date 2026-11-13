@@ -120,8 +120,10 @@ it in the registry as `r1` (or retrain with whatever review decisions exist):
 ```bash
 kubectl -n gstr2b run model-bootstrap --rm -i --restart=Never \
   --image=<dockerhub-user>/gstr2b-trainer:latest \
-  --overrides='{"spec":{"containers":[{"name":"model-bootstrap","image":"<dockerhub-user>/gstr2b-trainer:latest","args":["--bootstrap"],"envFrom":[{"configMapRef":{"name":"gstr2b-config"}}],"env":[{"name":"DATABASE_URL","valueFrom":{"secretKeyRef":{"name":"gstr2b-secrets","key":"DATABASE_URL"}}}]}]}}'
+  --overrides='{"spec":{"containers":[{"name":"model-bootstrap","image":"<dockerhub-user>/gstr2b-trainer:latest","command":["python","-m","trainer","--bootstrap"],"envFrom":[{"configMapRef":{"name":"gstr2b-config"}}],"env":[{"name":"DATABASE_URL","valueFrom":{"secretKeyRef":{"name":"gstr2b-secrets","key":"DATABASE_URL"}}}]}]}}'
 ```
 
-Use `"args":["--force"]` instead of `--bootstrap` to retrain now regardless of label count. The
+Use `"command":["python","-m","trainer","--force"]` to retrain now regardless of label count.
+(`command`, not `args`: the image has no ENTRYPOINT, so `args` would replace the whole command and
+the pod fails with `exec: "--bootstrap": executable file not found`. Tested on a k3s cluster.) The
 `trainer` CronJob does the nightly run (skips under 50 new decisions).
