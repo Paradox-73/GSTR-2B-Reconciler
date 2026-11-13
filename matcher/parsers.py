@@ -20,6 +20,13 @@ class ParseError(ValueError):
     pass
 
 
+def _text(raw) -> str:
+    """Cell as text. Blank xlsx cells come back as NaN, which str() would turn into "nan"."""
+    if raw is None or (isinstance(raw, float) and raw != raw):
+        return ""
+    return str(raw).strip()
+
+
 def _gstin(raw) -> str:
     """Cleaned but not checksum-validated: a typo'd GSTIN is a case the matcher handles."""
     g = gst.clean(str(raw or ""))
@@ -96,6 +103,12 @@ def parse_books(df: pd.DataFrame, mapping: dict[str, str]) -> list[Invoice]:
     def col(row, name):
         return row[mapping[name]] if name in mapping else None
 
+    def inv_no(row) -> str:
+        no = _text(col(row, "invoice_no"))
+        if not no:
+            raise ValueError("invoice number is blank")
+        return no
+
     out = []
     for i, row in enumerate(df.to_dict("records"), start=1):
         if all(pd.isna(v) or str(v).strip() == "" for v in row.values()):
@@ -105,8 +118,8 @@ def parse_books(df: pd.DataFrame, mapping: dict[str, str]) -> list[Invoice]:
                 id=f"B{i}",
                 source=BOOKS,
                 supplier_gstin=_gstin(col(row, "supplier_gstin")),
-                supplier_name=str(col(row, "supplier_name") or ""),
-                inv_no_raw=str(col(row, "invoice_no")),
+                supplier_name=_text(col(row, "supplier_name")),
+                inv_no_raw=inv_no(row),
                 inv_date=to_date(col(row, "invoice_date")),
                 taxable=amount(col(row, "taxable")), igst=amount(col(row, "igst")),
                 cgst=amount(col(row, "cgst")), sgst=amount(col(row, "sgst")),
