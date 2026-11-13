@@ -100,3 +100,37 @@
     ttl=1h
   loop: "{{ vault_app_policies.keys() | list }}"
   changed_when: false # overwrites with the same values on every run
+
+# Dev-mode Vault forgets everything on restart (seen on a test cluster: pods with the vault-agent
+# sidecar then hang at init). Seeding KV from the app's Kubernetes Secret makes recovery one run of
+# this role. Values go in on stdin with no_log, so they never show in process lists or output.
+- name: Read the app's Kubernetes Secret
+  ansible.builtin.command: "kubectl -n {{ app_namespace }} get secret gstr2b-secrets -o json"
+  register: vault_app_secret
+  changed_when: false
+  failed_when: false
+  no_log: true
+
+- name: Check which KV secrets exist
+  ansible.builtin.command: "{{ vault_cli }} kv get -format=json secret/gstr2b/{{ item }}"
+  register: vault_kv_present
+  loop: [db, app]
+  changed_when: false
+  failed_when: false
+
+- name: Seed missing KV secrets from the Kubernetes Secret
+  ansible.builtin.command:
+    cmd: "{{ vault_cli }} kv put secret/gstr2b/{{ item.item }} -"
+    stdin: "{{ vault_kv_values[item.item] | to_json }}"
+  vars:
+    vault_k8s: "{{ (vault_app_secret.stdout | from_json).data }}"
+    vault_kv_values:
+      db:
+        username: gstr2b
+        password: "{{ vault_k8s.POSTGRES_PASSWORD | b64decode }}"
+      app:
+        jwt_secret: "{{ vault_k8s.JWT_SECRET | b64decode }}"
+        admin_password: "{{ vault_k8s.ADMIN_PASSWORD | b64decode }}"
+  loop: "{{ vault_kv_present.results }}"
+  when: vault_app_secret.rc == 0 and item.rc != 0
+  no_log: true
