@@ -6,7 +6,7 @@
 | Team | Kanav Bhardwaj (Paradox-73), Bhavya Jain (Bhavzzzzzz) |
 | Repository | https://github.com/Paradox-73/GSTR-2B-Reconciler |
 
-> Draft. Sections marked TODO wait on open issues (#14 webhook, #19 Jenkins reads Vault, #66 app metrics, #26 rehearsal).
+> Draft. Sections marked TODO wait on open issues (#14 webhook, #66 app metrics, #26 rehearsal).
 
 ## 1. The application
 
@@ -89,7 +89,7 @@ The same tests also run on every pull request in GitHub Actions, together with `
 
 **MLOps: gated retraining with model hot-swap.** MLflow stores each model version with its metrics, training-data hash and git sha. The trainer CronJob retrains from the CA's review decisions plus synthetic pairs, and the `production` alias moves only if the candidate passes the gate on the golden set and a held-out slice of real labels, and its F1 is not lower than the current model's. Workers poll the registry every 60 seconds and swap the model in memory, so a promotion needs no pod restart. Every run records the model version it used. The gate earned its place: on the harder generated data, model v1 scored precision 0.81 and was blocked; v2 passed.
 
-**DevSecOps: Vault and image scanning.** Pods get the database password, JWT key and API token from Vault's KV engine through the Vault Agent Injector, authenticating with Vault's Kubernetes auth method (one policy per service). Uploaded files are encrypted with Vault's Transit engine before they reach disk: files on the volume start with `vault:v1:`, and the key never leaves Vault. If Vault is down, uploads fail with 503 instead of falling back to plaintext. Trivy scans every image on every build; on its first real run it blocked three fixable CRITICAL CVEs (brotli, openssl) in the frontend base image, fixed by upgrading Alpine packages. The same stage writes a CycloneDX SBOM for each image (the api image lists 159 packages) and archives it with the build, so every deployed image comes with a list of exactly what is inside it. TODO #19: Jenkins reads the Docker Hub token from Vault.
+**DevSecOps: Vault and image scanning.** Pods get the database password, JWT key and API token from Vault's KV engine through the Vault Agent Injector, authenticating with Vault's Kubernetes auth method (one policy per service). Uploaded files are encrypted with Vault's Transit engine before they reach disk: files on the volume start with `vault:v1:`, and the key never leaves Vault. If Vault is down, uploads fail with 503 instead of falling back to plaintext. Trivy scans every image on every build; on its first real run it blocked three fixable CRITICAL CVEs (brotli, openssl) in the frontend base image, fixed by upgrading Alpine packages. The same stage writes a CycloneDX SBOM for each image (the api image lists 159 packages) and archives it with the build, so every deployed image comes with a list of exactly what is inside it. Jenkins stores no Docker Hub token: the Push stage reads it from Vault with the Jenkins Vault plugin, logging in with an AppRole whose policy can read only that one secret, kept outside the path the app pods can read. Because Vault is reachable on a node port for Jenkins, dev mode's well-known root token is replaced with a random one kept in a Kubernetes Secret.
 
 ## 6. Results
 
@@ -126,5 +126,5 @@ TODO: fill in from the git history at submission time, and sign the separate con
 
 | Member | Code | DevOps |
 |---|---|---|
-| Kanav Bhardwaj | datagen, matcher, model, trainer, api, frontend | CI on pull requests, first drafts of Jenkinsfile, K8s manifests, Ansible roles, Vault and ELK; Prometheus + Grafana (#67), SBOM (#68); k3s test runs |
+| Kanav Bhardwaj | datagen, matcher, model, trainer, api, frontend | CI on pull requests, first drafts of Jenkinsfile, K8s manifests, Ansible roles, Vault and ELK; Prometheus + Grafana (#67), SBOM (#68), Jenkins reads Docker Hub token from Vault (#19); k3s test runs |
 | Bhavya Jain | review of the app code and five bug fixes with tests (#76-#80); TODO #66 metrics | minikube bring-up and fixes, Docker Hub, Jenkins on the real cluster, ELK and Vault in-cluster, load tests, rollback fix for rebuilds, `site.yml` on a fresh machine |
