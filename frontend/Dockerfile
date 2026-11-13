@@ -10,6 +10,11 @@ RUN npm run build
 # Runs as uid 101 (the base image's nginx user), not 10001: see docs/runtime-contract.md
 FROM nginxinc/nginx-unprivileged:1.27-alpine
 COPY nginx/default.conf.template nginx/api-proxy.locations.template /etc/nginx/templates/
-COPY --chmod=755 nginx/40-api-proxy.sh /docker-entrypoint.d/
+COPY nginx/40-api-proxy.sh /docker-entrypoint.d/
+# chmod in a RUN, not COPY --chmod: that flag needs BuildKit and broke the build in a Jenkins
+# that only had the legacy builder
+USER root
+RUN chmod 755 /docker-entrypoint.d/40-api-proxy.sh
+USER 101
 COPY --from=build /app/dist /usr/share/nginx/html
 EXPOSE 8080
