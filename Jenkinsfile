@@ -153,7 +153,8 @@ pipeline {
                 }
                 sh '''
                     ansible-playbook -i deploy/ansible/inventory/hosts.ini deploy/ansible/deploy.yml \
-                        -e image_tag="$SHA" -e dockerhub_user="$DOCKERHUB_USER"                         -e app_use_vault="${APP_USE_VAULT:-false}"
+                        -e image_tag="$SHA" -e dockerhub_user="$DOCKERHUB_USER" \
+                        -e app_use_vault="${APP_USE_VAULT:-false}"
                 '''
                 script {  // minikube lives on the host, not in the smoke test's container
                     env.APP_URL = env.APP_URL ?: "http://${sh(script: 'minikube ip', returnStdout: true).trim()}"
