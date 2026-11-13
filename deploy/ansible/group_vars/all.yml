@@ -12,7 +12,7 @@ target_user: "{{ ansible_user_id }}"
 deb_arch: "{{ 'arm64' if ansible_architecture == 'aarch64' else 'amd64' }}"
 
 minikube_cpus: 4
-minikube_memory: 8192 # MB
+minikube_memory: 6144 # MB, 8192 does not fit next to Docker Desktop on a 16 GB laptop
 
 elk_namespace: logging
 elk_version: "8.15.3"
