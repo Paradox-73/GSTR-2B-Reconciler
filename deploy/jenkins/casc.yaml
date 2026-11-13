@@ -20,6 +20,8 @@ jenkins:
             value: "${APP_URL:-}"
           - key: APP_USE_VAULT
             value: "${APP_USE_VAULT:-false}"
+          - key: REGISTRY
+            value: "${REGISTRY:-}"
 
 credentials:
   system:

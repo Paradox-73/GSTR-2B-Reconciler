@@ -7,6 +7,8 @@
 //   DOCKERHUB_USER  Docker Hub account the images are pushed to
 //   APP_URL         optional, defaults to http://$(minikube ip)
 //   APP_USE_VAULT   optional, "true" once roles/vault ran: deploys deploy/k8s-vault
+//   REGISTRY        optional, empty = Docker Hub. A local registry (e.g. localhost:5001, with
+//                   DOCKERHUB_USER=localhost:5001) works for an offline demo or a test run
 
 pipeline {
     agent any
@@ -131,7 +133,7 @@ pipeline {
                                                   usernameVariable: 'DOCKERHUB_LOGIN',
                                                   passwordVariable: 'DOCKERHUB_TOKEN')]) {
                     sh '''
-                        echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_LOGIN" --password-stdin
+                        echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_LOGIN" --password-stdin $REGISTRY
                         for i in $IMAGES; do
                             docker push "$DOCKERHUB_USER/gstr2b-$i:$SHA"
                             docker push "$DOCKERHUB_USER/gstr2b-$i:latest"
@@ -141,7 +143,7 @@ pipeline {
             }
             post {
                 always {
-                    sh 'docker logout'
+                    sh 'docker logout $REGISTRY'
                 }
             }
         }
