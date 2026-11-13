@@ -53,39 +53,20 @@ spec:
                 secretKeyRef:
                   name: gstr2b-secrets
                   key: DATABASE_URL
-          # The worker has no HTTP port. RQ keeps a heartbeat record per worker in
-          # Redis; the probe passes while this pod's record exists.
+          # The worker has no HTTP port. Its poll thread touches /tmp/worker-alive every
+          # MODEL_POLL_SECONDS (60); a shell age check costs nothing, unlike starting Python to
+          # ask Redis (that cost ~100m CPU per idle pod and kept the HPA pinned at 5).
           readinessProbe:
             exec:
-              command:
-                - python
-                - -c
-                - |
-                  import os, socket, sys
-                  from redis import Redis
-                  from rq import Worker
-                  me = socket.gethostname()
-                  workers = Worker.all(connection=Redis.from_url(os.environ["REDIS_URL"]))
-                  sys.exit(0 if any(w.hostname == me for w in workers) else 1)
-            initialDelaySeconds: 10
-            periodSeconds: 15
-            timeoutSeconds: 10
+              command: ["sh", "-c", "test -f /tmp/worker-alive"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
           livenessProbe:
             exec:
-              command:
-                - python
-                - -c
-                - |
-                  import os, socket, sys
-                  from redis import Redis
-                  from rq import Worker
-                  me = socket.gethostname()
-                  workers = Worker.all(connection=Redis.from_url(os.environ["REDIS_URL"]))
-                  sys.exit(0 if any(w.hostname == me for w in workers) else 1)
-            initialDelaySeconds: 30
+              command: ["sh", "-c", "test $(( $(date +%s) - $(stat -c %Y /tmp/worker-alive) )) -lt 180"]
+            initialDelaySeconds: 60
             periodSeconds: 30
-            timeoutSeconds: 10
-            failureThreshold: 4
+            failureThreshold: 3
           resources:
             requests:
               cpu: 200m
