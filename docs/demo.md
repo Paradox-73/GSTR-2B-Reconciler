@@ -4,6 +4,24 @@ The demo script from DESIGN.md section 17, with the exact commands. Everything h
 k3s test cluster; numbers in brackets are what that run gave. On the demo laptop minikube replaces
 k3s, so the app URL is `http://$(minikube ip)`.
 
+## Minikube on the demo laptop
+
+What the minikube runs on a Windows laptop (docker driver, minikube 1.39, k8s 1.37) needed:
+
+- Laptop: 16 GB RAM, Docker Desktop with ~7.6 GB. Start with
+  `minikube start --cpus 4 --memory 6144`, 8192 doesn't fit next to Docker Desktop itself.
+  Minimum to run the demo: 4 CPU / 6 GB for minikube.
+- Node memory: app idle ~2.3 GiB, app + ELK ~4.5 GiB, app + ELK + Vault ~4.8 GiB of the 6.
+  With Jenkins running on top the laptop starts swapping, so ELK stays off until part 8.
+- Node IP: not always `192.168.49.2`, check `docker inspect <profile>` (mine was `.58.2`). Jenkins'
+  kubeconfig points at `https://<node ip>:8443`, and `APP_URL=http://<node ip>` from inside the
+  Jenkins container.
+- Ingress: with the docker driver `minikube ip` isn't reachable from Windows. Use
+  `kubectl -n ingress-nginx port-forward svc/ingress-nginx-controller 8088:80` and open
+  `http://localhost:8088`.
+- k6 from docker can't reach the node IP either: `BASE_URL=http://host.docker.internal:8088`
+  over the same port-forward.
+
 ## Before the demo (30 min)
 
 1. Cluster up, app deployed, Vault mode:
@@ -13,7 +31,8 @@ k3s, so the app URL is `http://$(minikube ip)`.
    engines, policies and the KV secrets in one go.
 3. Jenkins up: `docker compose -f deploy/jenkins/docker-compose.yml --profile tunnel up -d`,
    update the GitHub webhook to the new tunnel URL (`deploy/jenkins/README.md`).
-4. Kibana dashboards imported (`deploy/elk/README.md`).
+4. ELK is **not** applied yet on minikube (memory, see above). Kibana dashboards get imported
+   at part 8 (`deploy/elk/README.md`).
 5. Test data: `python -m datagen --seed 1 --invoices 300 --out demo-data --xlsx`
 6. Workers idle at 1 replica: `kubectl -n gstr2b get hpa worker` shows `REPLICAS 1`.
 
@@ -60,6 +79,10 @@ kubectl -n gstr2b get hpa worker -w          # second terminal
    and the `production` alias.
 
 ## 8. Kibana
+
+On minikube, bring ELK up only now: `ansible-playbook -i deploy/ansible/inventory/hosts.ini
+deploy/ansible/site.yml --tags elk`, then import the dashboards (`deploy/elk/README.md`). Give it
+~3 min for Elasticsearch to go ready.
 
 Operations, Reconciliation, Model (versions, decisions, gate history, swaps), Pipeline (deploys
 per build sha).
