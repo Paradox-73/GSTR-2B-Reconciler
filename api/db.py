@@ -17,7 +17,9 @@ def engine():
     if _engine is None:
         url = get_settings().database_url
         args = {"check_same_thread": False} if url.startswith("sqlite") else {}
-        _engine = create_engine(url, pool_pre_ping=True, connect_args=args)
+        # hide_parameters: DB errors would otherwise print row values (names, amounts) to logs
+        _engine = create_engine(url, pool_pre_ping=True, connect_args=args,
+                                hide_parameters=True)
         SessionLocal.configure(bind=_engine)
     return _engine
 

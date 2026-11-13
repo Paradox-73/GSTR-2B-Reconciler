@@ -21,11 +21,16 @@ class Settings:
         self.admin_password = env("ADMIN_PASSWORD")
         self.upload_dir = env("UPLOAD_DIR", "./data/uploads")
         self.max_upload_mb = int(env("MAX_UPLOAD_MB", "20"))
+        self.retention_days = int(env("RETENTION_DAYS", "90"))
 
     def check_api(self) -> None:
         """Only the api signs tokens; the worker and migrations run without a JWT secret."""
         if not self.jwt_secret or len(self.jwt_secret) < 32:
             raise RuntimeError("JWT_SECRET must be set and at least 32 characters")
+        for name, value in (("JWT_SECRET", self.jwt_secret),
+                            ("ADMIN_PASSWORD", self.admin_password)):
+            if value and "CHANGE_ME" in value:
+                raise RuntimeError(f"{name} still has the example value; set a real one")
 
 
 @lru_cache

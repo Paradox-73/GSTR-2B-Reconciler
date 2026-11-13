@@ -1,13 +1,11 @@
 """/api/v1 endpoints (DESIGN.md 11)."""
 import io
-import json
 import re
 import uuid
 from collections import defaultdict
 from decimal import Decimal
 from pathlib import Path
 
-import pandas as pd
 from fastapi import (
     APIRouter,
     BackgroundTasks,
@@ -20,20 +18,22 @@ from fastapi import (
 )
 from fastapi.responses import Response
 from openpyxl import Workbook
+from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from api import jobs, logs, storage
+from api import jobs, logs, parsing, storage
 from api.db import get_db
 from api.jobs import to_invoice
-from api.security import create_token, current_user, verify_password
+from api.security import DUMMY_HASH, create_token, current_user, verify_password
 from api.settings import get_settings
 from api.tables import Client, InvoiceRow, MatchResult, ReviewDecision, Run, Upload, User
 from matcher import gstin as gst
-from matcher.models import Category
+from matcher.engine import compare
+from matcher.models import BOOKS, Category, Reason
 from matcher.notes import NoteLine, note
-from matcher.parsers import REQUIRED_COLUMNS, ParseError, parse_books, parse_gstr2b
+from matcher.parsers import REQUIRED_COLUMNS
 
 router = APIRouter(prefix="/api/v1")
 PERIOD = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
@@ -49,7 +49,9 @@ class LoginIn(BaseModel):
 @router.post("/auth/login")
 def login(body: LoginIn, db: Session = Depends(get_db)):
     user = db.scalar(select(User).where(User.email == body.email.strip().lower()))
-    if user is None or not verify_password(body.password, user.password_hash):
+    # Same bcrypt cost whether or not the email exists, so timing doesn't reveal accounts
+    hashed = user.password_hash if user else DUMMY_HASH
+    if not verify_password(body.password, hashed) or user is None:
         logs.log("login_failed")
         raise HTTPException(401, "wrong email or password")
     logs.log("login_ok", user_id=str(user.id))
@@ -89,6 +91,24 @@ def list_clients(user: User = Depends(current_user), db: Session = Depends(get_d
     return [client_out(c) for c in rows]
 
 
+@router.get("/clients/{client_id}")
+def get_client(client_id: uuid.UUID, user: User = Depends(current_user),
+               db: Session = Depends(get_db)):
+    return client_out(own_client(client_id, user, db))
+
+
+@router.get("/clients/{client_id}/uploads")
+def list_uploads(client_id: uuid.UUID, period: str | None = None,
+                 user: User = Depends(current_user), db: Session = Depends(get_db)):
+    own_client(client_id, user, db)
+    q = select(Upload).where(Upload.client_id == client_id)
+    if period:
+        q = q.where(Upload.period == period)
+    return [{"id": u.id, "kind": u.kind, "period": u.period, "original_name": u.original_name,
+             "invoice_count": u.invoice_count, "uploaded_at": u.uploaded_at}
+            for u in db.scalars(q.order_by(Upload.uploaded_at.desc()))]
+
+
 @router.post("/clients", status_code=201)
 def create_client(body: ClientIn, user: User = Depends(current_user),
                   db: Session = Depends(get_db)):
@@ -123,25 +143,31 @@ def save_mapping(client_id: uuid.UUID, body: MappingIn, user: User = Depends(cur
 
 # ---------- uploads ----------
 
+# Sync def: FastAPI runs it in a thread, and the parse itself runs in a child process
+# (api/parsing.py), so a big file stalls neither the event loop nor the GIL.
 @router.post("/clients/{client_id}/uploads", status_code=201)
-async def upload(client_id: uuid.UUID, kind: str = Form(pattern="^(gstr2b|books)$"),
-                 period: str = Form(), file: UploadFile = File(),
-                 user: User = Depends(current_user), db: Session = Depends(get_db)):
+def upload(client_id: uuid.UUID, kind: str = Form(pattern="^(gstr2b|books)$"),
+           period: str = Form(), file: UploadFile = File(),
+           user: User = Depends(current_user), db: Session = Depends(get_db)):
     c = own_client(client_id, user, db)
     if not PERIOD.match(period):
         raise HTTPException(422, "period must look like 2025-04")
-    data = await file.read()
-    if len(data) > get_settings().max_upload_mb * 1024 * 1024:
+    limit = get_settings().max_upload_mb * 1024 * 1024
+    data = file.file.read(limit + 1)
+    if len(data) > limit:
         raise HTTPException(413, "file too large")
     suffix = Path(file.filename or "").suffix.lower()
 
     try:
-        if kind == "gstr2b":
-            invoices = _parse_2b(data, c, period)
-        else:
-            invoices = _parse_books(data, suffix, c)
-    except ParseError as e:
-        raise HTTPException(422, str(e)) from e
+        outcome = parsing.parse_in_child(kind, data, suffix, c.gstin, c.column_mapping, period)
+    except RuntimeError as e:
+        logs.log("upload_parse_crashed", 40, kind=kind)
+        raise HTTPException(422, f"couldn't read this file as a {kind} file") from e
+    if outcome[0] == "mapping":
+        raise HTTPException(409, {"message": outcome[1], "columns": outcome[2]})
+    if outcome[0] == "error":
+        raise HTTPException(422, outcome[1])
+    invoices = outcome[1]
 
     try:
         path, sha = storage.save(c.id, data, suffix)
@@ -158,38 +184,16 @@ async def upload(client_id: uuid.UUID, kind: str = Form(pattern="^(gstr2b|books)
                           inv_date=i.inv_date, taxable=i.taxable, igst=i.igst, cgst=i.cgst,
                           sgst=i.sgst, cess=i.cess, itc_available=i.itc_available,
                           reverse_charge=i.reverse_charge) for i in invoices)
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        Path(path).unlink(missing_ok=True)  # no row points at it, so don't keep the file
+        raise
     logs.log("upload_saved", client_id=str(c.id), upload_id=str(up.id), kind=kind,
              invoices=len(invoices))
     return {"id": up.id, "kind": kind, "period": period, "invoice_count": len(invoices),
             "sha256": sha}
-
-
-def _parse_2b(data: bytes, c: Client, period: str):
-    try:
-        doc = json.loads(data)
-    except (UnicodeDecodeError, json.JSONDecodeError) as e:
-        raise ParseError("GSTR-2B file is not valid JSON") from e
-    root = doc.get("data", {}) if isinstance(doc, dict) else {}
-    root = root.get("data", root) if "gstin" not in root else root
-    if root.get("gstin") and gst.clean(root["gstin"]) != c.gstin:
-        raise ParseError(f"this GSTR-2B is for {root['gstin']}, not this client ({c.gstin})")
-    rtnprd = root.get("rtnprd")
-    if rtnprd and f"{rtnprd[2:]}-{rtnprd[:2]}" != period:
-        raise ParseError(f"this GSTR-2B is for period {rtnprd[:2]}/{rtnprd[2:]}, not {period}")
-    return parse_gstr2b(doc)
-
-
-def _parse_books(data: bytes, suffix: str, c: Client):
-    if suffix not in (".csv", ".xlsx", ".xls"):
-        raise ParseError("purchase register must be .xlsx or .csv")
-    df = (pd.read_csv(io.BytesIO(data), dtype=object, keep_default_na=False) if suffix == ".csv"
-          else pd.read_excel(io.BytesIO(data), dtype=object))
-    if not c.column_mapping:
-        # The UI shows the mapping screen with these headers, then uploads again
-        raise HTTPException(409, {"message": "save a column mapping for this client first",
-                                  "columns": [str(x) for x in df.columns]})
-    return parse_books(df, c.column_mapping)
 
 
 # ---------- runs ----------
@@ -326,13 +330,34 @@ def vendor_notes(run_id: uuid.UUID, user: User = Depends(current_user),
     client = db.get(Client, run.client_id)
     by_supplier: dict[str, list[NoteLine]] = defaultdict(list)
     names: dict[str, str] = {}
-    for m in _run_results(run, db):
-        side = m.gstr2b or m.books
-        gstin = (m.books or m.gstr2b).supplier_gstin  # books GSTIN: that's who the CA writes to
-        names.setdefault(gstin, side.supplier_name)
-        by_supplier[gstin].append(NoteLine(tuple(m.reason_codes),
-                                           m.books and to_invoice(m.books),
-                                           m.gstr2b and to_invoice(m.gstr2b)))
+
+    def add(b: InvoiceRow | None, g: InvoiceRow | None, reasons) -> None:
+        gstin = (b or g).supplier_gstin  # books GSTIN: that's who the CA writes to
+        names.setdefault(gstin, (g or b).supplier_name)
+        by_supplier[gstin].append(NoteLine(tuple(reasons), b and to_invoice(b),
+                                           g and to_invoice(g)))
+
+    results = _run_results(run, db)
+    latest = {m.id: m.decisions[-1].decision if m.decisions else None for m in results}
+    # The CA's decisions win over the engine: a manual link pairs two "missing" invoices (from
+    # either side's result), and a rejected pair means the books invoice really is missing in 2B
+    linked_ids, linked_pairs = set(), []
+    for m in results:
+        if latest[m.id] == "link":
+            own, other = m.books or m.gstr2b, db.get(InvoiceRow, m.decisions[-1].linked_invoice_id)
+            b, g = (own, other) if own.source == BOOKS else (other, own)
+            if (b.id, g.id) not in {(x.id, y.id) for x, y in linked_pairs}:
+                linked_pairs.append((b, g))
+            linked_ids |= {b.id, g.id}
+    for b, g in linked_pairs:
+        add(b, g, compare(to_invoice(b), to_invoice(g), client.tolerance))
+    for m in results:
+        if latest[m.id] == "link" or {m.books_invoice_id, m.gstr2b_invoice_id} & linked_ids:
+            continue
+        if latest[m.id] == "reject" and m.books and m.gstr2b:
+            add(m.books, None, [Reason.MISSING_IN_2B])
+        else:
+            add(m.books, m.gstr2b, m.reason_codes)
     out = []
     for gstin in sorted(by_supplier):
         body = note(names[gstin], run.period, client.name, client.gstin, by_supplier[gstin])
@@ -375,8 +400,14 @@ def export(run_id: uuid.UUID, user: User = Depends(current_user), db: Session = 
     for m in _run_results(run, db):
         last = m.decisions[-1].decision if m.decisions else None
         itc = m.gstr2b.itc_available if m.gstr2b else None
-        sheet.append([m.category, ", ".join(m.reason_codes), m.score, last,
-                      *_side(m.books), *_side(m.gstr2b), itc])
+        values = [m.category, ", ".join(m.reason_codes), m.score, last,
+                  *_side(m.books), *_side(m.gstr2b), itc]
+        # openpyxl refuses control characters, so strip them before the row goes in
+        sheet.append([ILLEGAL_CHARACTERS_RE.sub("", v) if isinstance(v, str) else v
+                      for v in values])
+        for cell in sheet[sheet.max_row]:
+            if cell.data_type == "f":  # text like "=HYPERLINK(...)" must stay text
+                cell.data_type = "s"
     sheet.auto_filter.ref = sheet.dimensions
     sheet.freeze_panes = "A2"
     buf = io.BytesIO()

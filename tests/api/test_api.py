@@ -189,3 +189,27 @@ def test_stuck_runs_get_reaped(client, auth, app):
         assert db.get(Run, ids[0]).status == "failed" and db.get(Run, ids[0]).error == "WorkerLost"
         assert db.get(Run, ids[1]).status == "running"
         assert db.get(Run, done.id).status == "done"
+
+
+def test_get_client_uploads_and_remap(client, auth, tmp_path):
+    import pandas as pd
+
+    cid = next(c["id"] for c in client.get(f"{V1}/clients", headers=auth).json()
+               if c["name"] == "Acme")
+    assert client.get(f"{V1}/clients/{cid}", headers=auth).json()["name"] == "Acme"
+    ups = client.get(f"{V1}/clients/{cid}/uploads", headers=auth,
+                     params={"period": "2025-04"}).json()
+    assert {u["kind"] for u in ups} == {"gstr2b", "books"} and all(u["invoice_count"] for u in ups)
+    assert client.get(f"{V1}/clients/{cid}/uploads", headers=auth,
+                      params={"period": "2030-01"}).json() == []
+
+    # a register with renamed headers -> 409 with the new headers, not a dead-end 422
+    df = pd.DataFrame([{"Supplier GSTIN": "27AAPFU0939F1ZV", "Name": "X", "Inv": "1",
+                        "Dt": "01-04-2025", "Taxable": 1, "I": 0, "C": 0, "S": 0}])
+    df.to_csv(tmp_path / "renamed.csv", index=False)
+    with open(tmp_path / "renamed.csv", "rb") as f:
+        r = client.post(f"{V1}/clients/{cid}/uploads", headers=auth,
+                        data={"kind": "books", "period": "2025-04"},
+                        files={"file": ("renamed.csv", f)})
+    assert r.status_code == 409 and "Inv" in r.json()["detail"]["columns"]
+    assert "missing" in r.json()["detail"]["message"]

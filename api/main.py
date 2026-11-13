@@ -1,4 +1,5 @@
 import os
+import threading
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -7,7 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import select, text
 
-from api import logs
+from api import logs, storage
 from api.db import SessionLocal, engine
 from api.routes import router
 from api.security import hash_password
@@ -28,6 +29,18 @@ def ensure_admin() -> None:
             logs.log("admin_created")
 
 
+def retention_loop(stop: threading.Event) -> None:
+    while True:
+        try:
+            n = storage.purge(get_settings().retention_days)
+            if n:
+                logs.log("uploads_purged", count=n, retention_days=get_settings().retention_days)
+        except Exception:  # never let a disk hiccup kill the thread
+            logs.log("uploads_purge_failed", 30, exc_info=True)
+        if stop.wait(3600):
+            return
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logs.setup()
@@ -38,7 +51,10 @@ async def lifespan(app: FastAPI):
         ensure_admin()
     except Exception:  # table missing before migrations ran; readyz will report it
         logs.log("admin_seed_skipped", exc_info=True)
+    stop = threading.Event()
+    threading.Thread(target=retention_loop, args=(stop,), daemon=True, name="retention").start()
     yield
+    stop.set()
 
 
 app = FastAPI(title="GSTR-2B Reconciler", lifespan=lifespan)

@@ -23,7 +23,7 @@ EXACT = ("mismatch", "itc_not_available")
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--base-url", default=os.environ.get("APP_URL", "http://localhost:8000"))
+    ap.add_argument("--base-url", default=os.environ.get("APP_URL", "http://127.0.0.1:8000"))
     ap.add_argument("--invoices", type=int, default=20)
     ap.add_argument("--timeout", type=int, default=120)
     a = ap.parse_args()
