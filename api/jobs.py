@@ -9,7 +9,7 @@ import xgboost as xgb
 from fastapi import BackgroundTasks
 from sqlalchemy import select
 
-from api import logs
+from api import logs, metrics
 from api.db import SessionLocal, engine
 from api.settings import env, get_settings
 from api.tables import Client, InvoiceRow, MatchResult, Run
@@ -51,6 +51,7 @@ class ModelHolder:
                     old = self.model.version if self.model else None
                     self.model, self.registry_version, self.loaded = new, mv.version, True
                     logs.log("model_swapped", from_version=old, model_version=new.version)
+                    metrics.set_model_version(new.version)
                     return
             except Exception:  # registry down: keep serving the model we have
                 logs.log("model_refresh_failed", logging.WARNING, exc_info=True)
@@ -66,6 +67,7 @@ class ModelHolder:
             logs.log("model_missing", logging.WARNING, exc_info=True)
             self.model = None  # runs record model_version=exact-only, so this shows in the UI
         self.loaded = True
+        metrics.set_model_version(self.model.version if self.model else EXACT_ONLY)
 
 
 models = ModelHolder()
@@ -135,6 +137,10 @@ def run_reconciliation(run_id: str) -> None:
             counts, version = None, None
             logs.log("run_failed", logging.ERROR, exc_info=True, error_type=type(e).__name__)
             db.commit()
+    metrics.RUNS.labels(status="failed" if counts is None else "done").inc()
+    metrics.RUN_SECONDS.observe(time.perf_counter() - started)
+    for category, n in (counts or {}).items():
+        metrics.INVOICES.labels(category=category).inc(n)
     if counts is not None:
         logs.log("run_completed", duration_ms=round((time.perf_counter() - started) * 1000),
                  model_version=version, counts=counts,
