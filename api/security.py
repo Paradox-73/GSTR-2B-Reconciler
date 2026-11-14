@@ -8,14 +8,10 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from api.db import get_db
-from api.settings import get_settings
+from api.settings import MAX_PASSWORD_BYTES, get_settings
 from api.tables import User
 
 _bearer = HTTPBearer(auto_error=False)
-
-
-# bcrypt only looks at the first 72 bytes, and bcrypt 5 raises instead of truncating
-MAX_PASSWORD_BYTES = 72
 
 
 def hash_password(password: str) -> str:

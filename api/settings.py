@@ -2,6 +2,9 @@
 import os
 from functools import lru_cache
 
+# bcrypt only looks at the first 72 bytes, and bcrypt 5 raises instead of truncating
+MAX_PASSWORD_BYTES = 72
+
 
 def env(name: str, default: str | None = None) -> str | None:
     path = os.environ.get(f"{name}_FILE")
@@ -33,7 +36,7 @@ class Settings:
                 raise RuntimeError(f"{name} still has the example value; set a real one")
         # bcrypt can't hash more than 72 bytes. Without this the admin seed fails on every
         # /readyz and the pod never goes ready, with nothing in the logs saying why.
-        if self.admin_password and len(self.admin_password.encode()) > 72:
+        if self.admin_password and len(self.admin_password.encode()) > MAX_PASSWORD_BYTES:
             raise RuntimeError("ADMIN_PASSWORD is longer than 72 bytes, which bcrypt can't "
                                "hash; use a shorter one")
 
