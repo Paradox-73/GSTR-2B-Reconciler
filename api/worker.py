@@ -9,12 +9,14 @@ import os
 import threading
 from pathlib import Path
 
+from prometheus_client import start_http_server
 from redis import Redis
 from rq import SimpleWorker
 
-from api import jobs, logs
+from api import jobs, logs, metrics
 
 POLL_SECONDS = int(os.environ.get("MODEL_POLL_SECONDS", "60"))
+METRICS_PORT = int(os.environ.get("METRICS_PORT", "9100"))  # Prometheus scrapes this (#66)
 # Probes check this file's age with a shell one-liner. Probing by starting Python and importing
 # rq every 15s cost ~100m CPU per idle pod, which alone kept the HPA at 5 replicas.
 HEARTBEAT = Path(os.environ.get("WORKER_HEARTBEAT", "/tmp/worker-alive"))
@@ -34,7 +36,11 @@ def poll(stop: threading.Event) -> None:
 
 def main() -> None:
     logs.setup()
-    logs.log("app_started", version=os.environ.get("APP_VERSION", "dev"))
+    # The worker isn't a web server, so prometheus_client serves /metrics from its own thread
+    start_http_server(METRICS_PORT)
+    version = os.environ.get("APP_VERSION", "dev")
+    logs.log("app_started", version=version)
+    metrics.APP_INFO.labels(version=version).set(1)
     jobs.models.get()  # baked-in model now; the poller swaps in the registry's one when it can
     stop = threading.Event()
     threading.Thread(target=poll, args=(stop,), daemon=True, name="model-poller").start()
