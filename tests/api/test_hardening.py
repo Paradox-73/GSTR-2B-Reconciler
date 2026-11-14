@@ -123,3 +123,21 @@ def test_example_secrets_refused(monkeypatch):
     monkeypatch.setenv("JWT_SECRET", "CHANGE_ME_TO_AT_LEAST_32_RANDOM_CHARACTERS")
     with pytest.raises(RuntimeError, match="example value"):
         Settings().check_api()
+
+
+def test_unreconciled_2b_sections_reported(client, auth):
+    """#74: amended invoices / credit notes aren't matched, but the CA has to be told."""
+    from datagen.generate import generate
+
+    ds = generate(seed=13, n_invoices=5, n_suppliers=2)
+    cid = client.post(f"{V1}/clients", json={"name": "Amendments", "gstin": ds.recipient_gstin},
+                      headers=auth).json()["id"]
+    docdata = ds.gstr2b["data"]["docdata"]
+    ctin = docdata["b2b"][0]["ctin"]
+    docdata["b2ba"] = [{"ctin": ctin, "inv": [{"inum": "A1"}, {"inum": "A2"}]}]
+    docdata["cdnr"] = [{"ctin": ctin, "nt": [{"ntnum": "CN1"}]}]
+    r = upload(client, auth, cid, "gstr2b", "2b.json", json.dumps(ds.gstr2b).encode())
+    assert r.status_code == 201, r.text
+    assert r.json()["unreconciled"] == {"b2ba": 2, "cdnr": 1}
+    (listed,) = client.get(f"{V1}/clients/{cid}/uploads", headers=auth).json()
+    assert listed["unreconciled"] == {"b2ba": 2, "cdnr": 1}

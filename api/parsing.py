@@ -15,7 +15,7 @@ from concurrent.futures.process import BrokenProcessPool
 import pandas as pd
 
 from matcher import gstin as gst
-from matcher.parsers import ParseError, parse_books, parse_gstr2b
+from matcher.parsers import ParseError, parse_books, parse_gstr2b, unreconciled_sections
 
 MAX_ROWS = 50_000
 MAX_XLSX_UNZIPPED = 100 * 1024 * 1024
@@ -29,10 +29,12 @@ _pool: ProcessPoolExecutor | None = None
 
 def parse(kind: str, data: bytes, suffix: str, client_gstin: str, mapping: dict | None,
           period: str):
-    """Returns ("ok", invoices) | ("mapping", message, columns) | ("error", message)."""
+    """Returns ("ok", invoices, unreconciled) | ("mapping", message, columns) | ("error", message).
+    unreconciled: document counts of the 2B sections v1 doesn't match ({} for books)."""
+    unreconciled = {}
     try:
         if kind == "gstr2b":
-            invoices = _parse_2b(data, client_gstin, period)
+            invoices, unreconciled = _parse_2b(data, client_gstin, period)
         else:
             out = _parse_books(data, suffix, mapping)
             if out[0] == "mapping":
@@ -44,7 +46,7 @@ def parse(kind: str, data: bytes, suffix: str, client_gstin: str, mapping: dict 
         return ("error", f"couldn't read this file as a {kind} file")
     if len(invoices) > MAX_ROWS:
         return ("error", f"too many invoices in one file (max {MAX_ROWS})")
-    return ("ok", invoices)
+    return ("ok", invoices, unreconciled)
 
 
 def parse_in_child(*args):
@@ -80,7 +82,7 @@ def _parse_2b(data: bytes, client_gstin: str, period: str):
     rtnprd = str(root.get("rtnprd") or "")
     if rtnprd and f"{rtnprd[2:]}-{rtnprd[:2]}" != period:
         raise ParseError(f"this GSTR-2B is for period {rtnprd[:2]}/{rtnprd[2:]}, not {period}")
-    return parse_gstr2b(doc)
+    return parse_gstr2b(doc), unreconciled_sections(doc)
 
 
 def _parse_books(data: bytes, suffix: str, mapping: dict | None):

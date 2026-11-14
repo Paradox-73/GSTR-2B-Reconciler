@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api.js';
 import { dateTime, num, period as periodLabel, previousMonth } from '../format.js';
-import { STATUS_LABEL } from '../labels.js';
+import { STATUS_LABEL, unreconciledText } from '../labels.js';
 import MappingForm from '../components/MappingForm.jsx';
 
 const UPLOADS = [
@@ -129,6 +129,11 @@ export default function ClientPage() {
                 <p className="ok" data-testid={`${kind}-result`}>
                   <strong>{num(last.invoice_count)} invoices</strong> read from {last.original_name} for{' '}
                   {periodLabel(last.period)} · uploaded {dateTime(last.uploaded_at)}
+                </p>
+              )}
+              {last && unreconciledText(last.unreconciled) && (
+                <p className="warn" data-testid={`${kind}-unreconciled`}>
+                  {unreconciledText(last.unreconciled)}
                 </p>
               )}
             </section>
