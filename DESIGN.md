@@ -379,7 +379,7 @@ flowchart LR
 | Golden-set tests | Runs the full matcher on the golden set, compares every category against ground truth | any category count differs from expected |
 | Model quality gate | Evaluates the current Production model and any candidate against thresholds | precision or recall below threshold |
 | Build | Builds `frontend`, `api`, `matcher`, `trainer` images tagged `:<git-sha>` and `:latest` | build error |
-| Scan | Trivy on each image | critical CVE found |
+| Scan | Trivy on each image; it also writes a CycloneDX SBOM per image, archived with the build, so every deployed image comes with a list of exactly what is inside it | critical CVE found |
 | Push | Pushes images to Docker Hub using credentials from Vault | push error |
 | Deploy | Runs the Ansible `app_deploy` role, which updates image tags and applies manifests | rollout not healthy within timeout |
 | Smoke test | Calls `/healthz` and runs a 20-invoice reconciliation end to end | wrong result or error |
