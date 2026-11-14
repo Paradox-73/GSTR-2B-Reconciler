@@ -7,3 +7,4 @@ git:5.11.0
 github:1.47.0
 docker-workflow:653.v2f2c08eff0ec
 credentials-binding:728.v902a_273b_8947
+hashicorp-vault-plugin:384.vda_86ec66c537

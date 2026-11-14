@@ -27,12 +27,15 @@ credentials:
   system:
     domainCredentials:
       - credentials:
-          - usernamePassword:
+          # Jenkins' login to Vault. The Docker Hub token itself lives only in Vault
+          # (secret/jenkins/dockerhub) and is read by the Push stage.
+          - vaultAppRoleCredential:
               scope: GLOBAL
-              id: dockerhub
-              description: Docker Hub push (moves to the Vault plugin, #19)
-              username: "${DOCKERHUB_USER}"
-              password: "${DOCKERHUB_TOKEN}"
+              id: vault-approle
+              description: Vault AppRole, reads the Docker Hub secret only
+              roleId: "${VAULT_ROLE_ID}"
+              secretId: "${VAULT_SECRET_ID}"
+              path: approle
           - usernamePassword:
               scope: GLOBAL
               id: smoke-user
@@ -43,6 +46,11 @@ credentials:
 unclassified:
   location:
     url: "${JENKINS_URL:-http://localhost:8081/}"
+  hashicorpVault:
+    configuration:
+      vaultUrl: "${VAULT_ADDR}"
+      vaultCredentialId: vault-approle
+      engineVersion: 2
 
 # The job, with "GitHub hook trigger for GITScm polling" on from the start (a trigger declared
 # only inside the Jenkinsfile registers after the first build).

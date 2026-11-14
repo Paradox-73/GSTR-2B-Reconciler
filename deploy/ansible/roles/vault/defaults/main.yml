@@ -32,3 +32,17 @@ vault_app_policies:
     path "secret/data/gstr2b/db" {
       capabilities = ["read"]
     }
+
+# Jenkins logs in to Vault with an AppRole and reads only the Docker Hub secret. Its path is
+# outside secret/gstr2b/, which the api policy can read. Both ids are any random strings you
+# choose; they go in deploy/jenkins/.env too, and fixed ids keep working after dev-mode Vault
+# restarts. Empty = skip the Jenkins setup.
+vault_jenkins_role_id: ""
+vault_jenkins_secret_id: ""
+vault_dockerhub_path: secret/jenkins/dockerhub
+vault_jenkins_policy: |
+  path "secret/data/jenkins/dockerhub" {
+    capabilities = ["read"]
+  }
+# Optional: puts the Docker Hub user + token into Vault (-e dockerhub_token=...).
+dockerhub_token: ""

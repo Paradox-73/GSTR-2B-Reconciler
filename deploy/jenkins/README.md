@@ -1,7 +1,7 @@
 # Jenkins for this project
 
-A Jenkins that comes up already configured: admin user, the `dockerhub` and `smoke-user`
-credentials, the global env vars the Jenkinsfile reads, and the `gstr2b-reconciler` pipeline job
+A Jenkins that comes up already configured: admin user, the `smoke-user` credential, its login
+to Vault (where the Docker Hub token lives), the global env vars the Jenkinsfile reads, and the `gstr2b-reconciler` pipeline job
 with **GitHub hook trigger for GITScm polling** switched on. All of it comes from `casc.yaml`
 (Jenkins Configuration as Code), so there is no setup wizard and nothing to click.
 
@@ -23,6 +23,24 @@ docker driver the API server is on the minikube network, so either attach Jenkin
 (`docker network connect minikube gstr2b-jenkins-jenkins-1`) or point `server:` at an address
 the container can reach. Test with
 `docker compose -f deploy/jenkins/docker-compose.yml exec jenkins kubectl get nodes`.
+
+## Docker Hub token in Vault
+
+The Push stage reads the Docker Hub token from Vault (`secret/jenkins/dockerhub`) with
+the Jenkins Vault plugin; Jenkins logs in with an AppRole and stores no token of its own.
+
+1. Pick two random strings for `VAULT_ROLE_ID` and `VAULT_SECRET_ID` in `.env`
+   (`openssl rand -hex 16` twice), and set `VAULT_ADDR=http://<minikube node ip>:30820`.
+2. Register them and store the token (also after every Vault restart, dev mode forgets):
+   `ansible-playbook -i deploy/ansible/inventory/hosts.ini deploy/ansible/site.yml --tags vault -e vault_jenkins_role_id=<VAULT_ROLE_ID> -e vault_jenkins_secret_id=<VAULT_SECRET_ID> -e dockerhub_user=<user> -e dockerhub_token=<token>`
+3. Test from the Jenkins container: `curl -s $VAULT_ADDR/v1/sys/health` answers JSON.
+
+After a Vault restart, give it a minute before the next build: Jenkins keeps its Vault token
+until the token expires (60 s), and a token from before the restart is refused ("Access denied
+to Vault path").
+
+The AppRole's policy reads that one path only, and the path sits outside `secret/gstr2b/`, which
+the app pods can read.
 
 ## GitHub webhook (push -> build)
 

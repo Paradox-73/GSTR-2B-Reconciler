@@ -12,7 +12,7 @@ Two playbooks, both run against `localhost` (the laptop that hosts minikube and 
 | `common` | apt base packages, Python Kubernetes client for the `kubernetes.core` modules |
 | `docker` | Docker Engine from Docker's apt repo, adds you to the `docker` group |
 | `k8s_cluster` | kubectl, minikube and helm binaries; starts minikube; enables ingress and metrics-server |
-| `vault` | Vault Helm chart (namespace `vault`, injector on); KV v2, Transit key `uploads`, Kubernetes auth, policies and roles for api/worker/trainer |
+| `vault` | Vault Helm chart (namespace `vault`, injector on); KV v2, Transit key `uploads`, Kubernetes auth, policies and roles for api/worker/trainer; with `-e vault_jenkins_role_id/secret_id` also an AppRole for Jenkins and the Docker Hub token at `secret/jenkins/dockerhub` |
 | `elk` | Elasticsearch, Logstash, Kibana, Filebeat in namespace `logging`; configs from `deploy/elk/` |
 | `monitoring` | Prometheus + Grafana in namespace `monitoring`, built with kustomize from `deploy/k8s-monitoring/` |
 | `app_deploy` | pins image tags, starts postgres, runs the migrations Job, applies `deploy/k8s`, waits for every rollout |
