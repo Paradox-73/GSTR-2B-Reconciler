@@ -25,6 +25,27 @@ export const REASONS = {
   ITC_INELIGIBLE: 'Input tax credit not available',
 };
 
+// GSTR-2B sections v1 doesn't reconcile (only b2b is matched, DESIGN.md 2.2)
+export const SECTION_LABEL = {
+  b2ba: 'amended invoices',
+  cdnr: 'credit/debit notes',
+  cdnra: 'amended credit/debit notes',
+  isd: 'ISD documents',
+  isda: 'amended ISD documents',
+  impg: 'import of goods entries',
+  impgsez: 'SEZ import entries',
+  ecom: 'e-commerce invoices',
+  ecoma: 'amended e-commerce invoices',
+};
+
+export function unreconciledText(counts) {
+  const parts = Object.entries(counts || {})
+    .filter(([, n]) => n > 0)
+    .map(([section, n]) => `${n} ${SECTION_LABEL[section] || `${section} entries`}`);
+  if (!parts.length) return '';
+  return `This 2B also has ${parts.join(', ')}. These aren't reconciled, check them by hand.`;
+}
+
 export const DECISION_LABEL = { accept: 'Accepted', reject: 'Rejected', link: 'Linked' };
 
 export const STATUS_LABEL = {

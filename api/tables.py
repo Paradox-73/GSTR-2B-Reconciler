@@ -48,6 +48,8 @@ class Upload(Base):
     file_path: Mapped[str] = mapped_column(String(500))
     sha256: Mapped[str] = mapped_column(String(64))
     invoice_count: Mapped[int]
+    # 2B only: document counts of sections v1 doesn't reconcile, e.g. {"b2ba": 3} (#74)
+    unreconciled: Mapped[dict | None] = mapped_column(JSON)
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
