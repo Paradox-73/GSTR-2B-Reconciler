@@ -5,11 +5,12 @@ import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 
-from api import logs, storage
+from api import logs, metrics, storage
 from api.db import SessionLocal, engine
 from api.routes import router
 from api.security import hash_password
@@ -53,7 +54,9 @@ def retention_loop(stop: threading.Event) -> None:
 async def lifespan(app: FastAPI):
     logs.setup()
     get_settings().check_api()  # fail fast on bad config
-    logs.log("app_started", version=os.environ.get("APP_VERSION", "dev"))
+    version = os.environ.get("APP_VERSION", "dev")
+    logs.log("app_started", version=version)
+    metrics.APP_INFO.labels(version=version).set(1)
     engine()
     try:
         ensure_admin()
@@ -80,14 +83,25 @@ async def request_context(request: Request, call_next):
         logs.log("request_failed", 40, exc_info=True, method=request.method,
                  path=request.url.path)
         response = JSONResponse({"detail": "internal error", "request_id": rid}, 500)
-    route = request.scope.get("route")
-    if request.url.path not in ("/healthz", "/readyz"):  # probes would flood the logs
-        logs.log("request", method=request.method, path=getattr(route, "path", "unmatched"),
-                 status_code=response.status_code,
-                 duration_ms=round((time.perf_counter() - started) * 1000, 1))
+    elapsed = time.perf_counter() - started
+    # The route template (/api/v1/runs/{run_id}), never the raw path: one series per run id
+    # would blow up Prometheus
+    path = getattr(request.scope.get("route"), "path", "unmatched")
+    metrics.HTTP_REQUESTS.labels(method=request.method, route=path,
+                                 status=str(response.status_code)).inc()
+    metrics.HTTP_DURATION.labels(route=path).observe(elapsed)
+    if request.url.path not in ("/healthz", "/readyz", "/metrics"):  # would flood the logs
+        logs.log("request", method=request.method, path=path,
+                 status_code=response.status_code, duration_ms=round(elapsed * 1000, 1))
     response.headers["x-request-id"] = rid
     logs.request_id.reset(token)
     return response
+
+
+@app.get("/metrics", include_in_schema=False)
+def prometheus_metrics():
+    # At the root, not under /api: the ingress only forwards /api, so this stays in-cluster
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.get("/healthz")

@@ -28,6 +28,7 @@ CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 FROM base AS worker
 ENV SERVICE_NAME=worker
+EXPOSE 9100
 CMD ["python", "-m", "api.worker"]
 
 FROM base AS trainer
