@@ -1,0 +1,11 @@
+# Provisions a fresh Ubuntu machine end to end: tools, minikube, Vault, ELK, then the app.
+# Run as your normal user; tasks that need root use become.
+- name: Provision the GSTR-2B Reconciler host
+  hosts: local
+  roles:
+    - { role: common, tags: [common] }
+    - { role: docker, tags: [docker] }
+    - { role: k8s_cluster, tags: [k8s_cluster] }
+    - { role: vault, tags: [vault] }
+    - { role: elk, tags: [elk] }
+    - { role: app_deploy, tags: [app_deploy] }

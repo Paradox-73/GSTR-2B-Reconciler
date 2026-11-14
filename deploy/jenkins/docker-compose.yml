@@ -1,0 +1,24 @@
+# cp deploy/jenkins/.env.example deploy/jenkins/.env   (fill it in)
+# docker compose -f deploy/jenkins/docker-compose.yml up -d --build      -> http://localhost:8081
+# With the tunnel profile you also get a public URL for the GitHub webhook:
+# docker compose -f deploy/jenkins/docker-compose.yml --profile tunnel up -d
+#   docker compose -f deploy/jenkins/docker-compose.yml logs tunnel | grep trycloudflare.com
+name: gstr2b-jenkins
+services:
+  jenkins:
+    build: .
+    env_file: .env
+    ports: ["127.0.0.1:${JENKINS_PORT:-8081}:8080"]
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${KUBECONFIG_FILE:-./kubeconfig}:/root/.kube/config:ro
+    environment:
+      KUBECONFIG: /root/.kube/config
+  tunnel:
+    image: cloudflare/cloudflared:2025.10.0
+    command: tunnel --no-autoupdate --url http://jenkins:8080
+    profiles: [tunnel]
+    depends_on: [jenkins]
+volumes:
+  jenkins_home:

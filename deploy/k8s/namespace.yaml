@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gstr2b
+  # Same label kustomize adds; without it the role's namespace-first apply and the full apply
+  # kept flipping it, so every deploy reported a change
+  labels:
+    app.kubernetes.io/part-of: gstr2b

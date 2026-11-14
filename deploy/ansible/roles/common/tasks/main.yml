@@ -1,0 +1,21 @@
+- name: Install base packages
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - git
+      - python3-pip
+      - python3-venv
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+
+- name: Install the Kubernetes Python client that kubernetes.core modules need
+  ansible.builtin.pip:
+    name: kubernetes
+    extra_args: --user
+  environment:
+    # Ubuntu 23.04+ marks the system Python as externally managed (PEP 668); --user keeps
+    # the install out of the apt-owned site-packages.
+    PIP_BREAK_SYSTEM_PACKAGES: "1"
