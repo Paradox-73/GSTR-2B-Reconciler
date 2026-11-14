@@ -6,6 +6,7 @@ image_tag: latest
 
 k8s_dir: "{{ playbook_dir | dirname }}/k8s"
 elk_config_dir: "{{ playbook_dir | dirname }}/elk"
+monitoring_dir: "{{ playbook_dir | dirname }}/k8s-monitoring"
 
 # Whoever runs site.yml owns minikube and gets added to the docker group.
 target_user: "{{ ansible_user_id }}"

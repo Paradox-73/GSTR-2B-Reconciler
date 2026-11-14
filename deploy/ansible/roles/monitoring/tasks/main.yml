@@ -1,0 +1,9 @@
+# Prometheus + Grafana from deploy/k8s-monitoring. kustomize builds the manifests (it turns the
+# scrape config and the dashboard JSON into ConfigMaps); the k8s module applies them, so a rerun
+# with no changes reports changed=0.
+- name: Deploy Prometheus and Grafana
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('kubernetes.core.kustomize', dir=monitoring_dir) }}"
+    wait: true
+    wait_timeout: 300

@@ -1,4 +1,5 @@
-# Provisions a fresh Ubuntu machine end to end: tools, minikube, Vault, ELK, then the app.
+# Provisions a fresh Ubuntu machine end to end: tools, minikube, Vault, ELK, Prometheus +
+# Grafana, then the app.
 # Run as your normal user; tasks that need root use become.
 - name: Provision the GSTR-2B Reconciler host
   hosts: local
@@ -8,4 +9,5 @@
     - { role: k8s_cluster, tags: [k8s_cluster] }
     - { role: vault, tags: [vault] }
     - { role: elk, tags: [elk] }
+    - { role: monitoring, tags: [monitoring] }
     - { role: app_deploy, tags: [app_deploy] }
