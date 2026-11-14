@@ -1,3 +1,4 @@
+import json
 from datetime import date
 from decimal import Decimal
 
@@ -5,7 +6,14 @@ import pandas as pd
 import pytest
 
 from matcher import gstin
-from matcher.parsers import ParseError, load_books, load_gstr2b, parse_books, parse_gstr2b
+from matcher.parsers import (
+    ParseError,
+    load_books,
+    load_gstr2b,
+    parse_books,
+    parse_gstr2b,
+    unreconciled_sections,
+)
 
 FIX = "tests/fixtures/"
 MAPPING = {"supplier_gstin": "GSTIN/UIN", "supplier_name": "Party Name", "invoice_no": "Bill No",
@@ -99,3 +107,22 @@ def test_bad_row_reports_line():
 def test_unsupported_file(tmp_path):
     with pytest.raises(ParseError):
         load_books(tmp_path / "x.pdf", MAPPING)
+
+
+def test_unreconciled_sections_are_counted():
+    sup = {"ctin": "27PQRSX5678K1ZY"}
+    doc = {"data": {"gstin": "x", "docdata": {
+        "b2b": [{**sup, "inv": [{"inum": "1", "dt": "01-04-2025", "txval": 1}]}],
+        "b2ba": [{**sup, "inv": [{"inum": "2"}, {"inum": "3"}]}, {**sup, "inv": [{"inum": "4"}]}],
+        "cdnr": [{**sup, "nt": [{"ntnum": "C1"}, {"ntnum": "C2"}]}],
+        "isd": [{"ctin": "x", "doclist": [{"docnum": "I1"}]}],
+        "impg": [{"refdt": "01-04-2025"}, {"refdt": "02-04-2025"}],
+        "cdnra": [],
+    }}}
+    assert unreconciled_sections(doc) == {"b2ba": 3, "cdnr": 2, "isd": 1, "impg": 2}
+    assert len(parse_gstr2b(doc)) == 1  # still only b2b is reconciled
+
+
+def test_plain_b2b_file_has_nothing_unreconciled():
+    with open(FIX + "gstr2b_items_format.json", encoding="utf-8") as f:
+        assert unreconciled_sections(json.load(f)) == {}

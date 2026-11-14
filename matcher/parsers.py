@@ -69,6 +69,31 @@ def parse_gstr2b(doc: dict) -> list[Invoice]:
     return out
 
 
+# Which list holds the documents in each docdata section. b2ba is shaped like b2b, credit/debit
+# notes sit under "nt", ISD under "doclist"; sections not listed (impg, ...) are flat lists.
+_DOC_LISTS = ("inv", "nt", "doclist")
+
+
+def unreconciled_sections(doc: dict) -> dict[str, int]:
+    """Document counts for every docdata section other than b2b, e.g. {"b2ba": 3, "cdnr": 2}.
+
+    v1 reconciles B2B invoices only (DESIGN.md 2.2), so these are left out of the run. The CA
+    needs to know they exist: an invoice the supplier amended sits in b2ba, and without this
+    it would just look missing in 2B (#74).
+    """
+    out = {}
+    for section, entries in (_unwrap(doc).get("docdata") or {}).items():
+        if section == "b2b" or not isinstance(entries, list):
+            continue
+        n = 0
+        for e in entries:
+            docs = next((e[k] for k in _DOC_LISTS if isinstance(e, dict) and k in e), None)
+            n += len(docs) if isinstance(docs, list) else 1
+        if n:
+            out[section] = n
+    return out
+
+
 def load_gstr2b(path: str | Path) -> list[Invoice]:
     with open(path, encoding="utf-8") as f:
         return parse_gstr2b(json.load(f))

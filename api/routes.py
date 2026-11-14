@@ -105,7 +105,8 @@ def list_uploads(client_id: uuid.UUID, period: str | None = None,
     if period:
         q = q.where(Upload.period == period)
     return [{"id": u.id, "kind": u.kind, "period": u.period, "original_name": u.original_name,
-             "invoice_count": u.invoice_count, "uploaded_at": u.uploaded_at}
+             "invoice_count": u.invoice_count, "unreconciled": u.unreconciled or {},
+             "uploaded_at": u.uploaded_at}
             for u in db.scalars(q.order_by(Upload.uploaded_at.desc()))]
 
 
@@ -167,7 +168,7 @@ def upload(client_id: uuid.UUID, kind: str = Form(pattern="^(gstr2b|books)$"),
         raise HTTPException(409, {"message": outcome[1], "columns": outcome[2]})
     if outcome[0] == "error":
         raise HTTPException(422, outcome[1])
-    invoices = outcome[1]
+    invoices, unreconciled = outcome[1], outcome[2]
 
     try:
         path, sha = storage.save(c.id, data, suffix)
@@ -175,7 +176,8 @@ def upload(client_id: uuid.UUID, kind: str = Form(pattern="^(gstr2b|books)$"),
         logs.log("upload_store_failed", 40, error_type=type(e).__name__)
         raise HTTPException(503, "file storage is unavailable, try again shortly") from e
     up = Upload(client_id=c.id, period=period, kind=kind, original_name=file.filename or "",
-                file_path=path, sha256=sha, invoice_count=len(invoices))
+                file_path=path, sha256=sha, invoice_count=len(invoices),
+                unreconciled=unreconciled or None)
     db.add(up)
     db.flush()
     db.add_all(InvoiceRow(upload_id=up.id, ext_id=i.id, source=i.source,
@@ -191,9 +193,9 @@ def upload(client_id: uuid.UUID, kind: str = Form(pattern="^(gstr2b|books)$"),
         Path(path).unlink(missing_ok=True)  # no row points at it, so don't keep the file
         raise
     logs.log("upload_saved", client_id=str(c.id), upload_id=str(up.id), kind=kind,
-             invoices=len(invoices))
+             invoices=len(invoices), unreconciled=unreconciled)  # counts only, no data
     return {"id": up.id, "kind": kind, "period": period, "invoice_count": len(invoices),
-            "sha256": sha}
+            "unreconciled": unreconciled, "sha256": sha}
 
 
 # ---------- runs ----------
