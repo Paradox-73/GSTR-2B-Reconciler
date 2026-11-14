@@ -113,16 +113,28 @@ pipeline {
         // --ignore-unfixed: a CVE with no patched package yet cannot be fixed by us, so it should not block.
         stage('Trivy scan') {
             steps {
+                // Per image: a CycloneDX SBOM (every package in the image, kept with the build),
+                // then the gate: any fixable CRITICAL CVE fails the build. Trivy runs in its own
+                // container, so the SBOM comes out on stdout and lands in this workspace.
                 sh '''
-                    for i in $IMAGES; do
+                    trivy_image() {
+                        img=$1; shift
                         docker run --rm \
                             -v /var/run/docker.sock:/var/run/docker.sock \
                             -v trivy-cache:/root/.cache/ \
-                            aquasec/trivy:0.57.1 image \
-                            --exit-code 1 --severity CRITICAL --ignore-unfixed --no-progress \
-                            "$DOCKERHUB_USER/gstr2b-$i:$SHA"
+                            aquasec/trivy:0.57.1 image --no-progress "$@" "$img"
+                    }
+                    rm -f sbom-*.cdx.json
+                    for i in $IMAGES; do
+                        trivy_image "$DOCKERHUB_USER/gstr2b-$i:$SHA" --quiet --format cyclonedx > "sbom-$i.cdx.json"
+                        trivy_image "$DOCKERHUB_USER/gstr2b-$i:$SHA" --exit-code 1 --severity CRITICAL --ignore-unfixed
                     done
                 '''
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'sbom-*.cdx.json', allowEmptyArchive: true
+                }
             }
         }
 

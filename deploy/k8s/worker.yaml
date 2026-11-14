@@ -18,15 +18,10 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: worker
-      # Target setup once Vault (#19) is live; see api.yaml.
-      # annotations:
-      #   vault.hashicorp.com/agent-inject: "true"
-      #   vault.hashicorp.com/role: "worker"
-      #   vault.hashicorp.com/agent-inject-secret-db: "secret/data/gstr2b/db"
-      #   vault.hashicorp.com/agent-inject-template-db: |
-      #     {{- with secret "secret/data/gstr2b/db" -}}
-      #     postgresql+psycopg://{{ .Data.data.username }}:{{ .Data.data.password }}@postgres:5432/gstr2b
-      #     {{- end -}}
+      # The worker serves its metrics on :9100 (api/worker.py); see api.yaml.
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9100"
     spec:
       serviceAccountName: worker
       # Gives a running job time to finish before the pod is killed during a rollout.
@@ -41,6 +36,9 @@ spec:
       containers:
         - name: worker
           image: DOCKERHUB_USER/gstr2b-worker:latest
+          ports:
+            - name: metrics
+              containerPort: 9100
           envFrom:
             - configMapRef:
                 name: gstr2b-config

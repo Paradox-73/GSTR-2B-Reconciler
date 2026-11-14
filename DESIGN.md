@@ -379,7 +379,7 @@ flowchart LR
 | Golden-set tests | Runs the full matcher on the golden set, compares every category against ground truth | any category count differs from expected |
 | Model quality gate | Evaluates the current Production model and any candidate against thresholds | precision or recall below threshold |
 | Build | Builds `frontend`, `api`, `matcher`, `trainer` images tagged `:<git-sha>` and `:latest` | build error |
-| Scan | Trivy on each image | critical CVE found |
+| Scan | Trivy on each image; it also writes a CycloneDX SBOM per image, archived with the build, so every deployed image comes with a list of exactly what is inside it | critical CVE found |
 | Push | Pushes images to Docker Hub using credentials from Vault | push error |
 | Deploy | Runs the Ansible `app_deploy` role, which updates image tags and applies manifests | rollout not healthy within timeout |
 | Smoke test | Calls `/healthz` and runs a 20-invoice reconciliation end to end | wrong result or error |
@@ -598,4 +598,5 @@ What the code does differently from the sections above, and why.
 | 12 | Vault unsealed by the Ansible role | Dev mode for the demo; the role re-creates engines, policies and KV secrets (from the Kubernetes Secret) on every run | Dev-mode Vault forgets everything on restart; recovery is now one playbook run |
 | 13.4 | Deploy reports changes from `kubectl apply` output | `kubectl diff` decides | The postgres StatefulSet always printed "configured", so every run looked like a change |
 | 13.2 | Jenkins set up by hand | `deploy/jenkins`: image plus Configuration as Code (credentials, env vars, job with the GitHub hook trigger) | One command gives a working Jenkins; nothing to click |
-| 12 | Jenkins reads Docker Hub and kubeconfig credentials from Vault | Docker Hub user and token only, at `secret/jenkins/dockerhub`, read with an AppRole whose policy allows that one path; Vault gets NodePort 30820 so Jenkins outside the cluster reaches it | The token sits outside `secret/gstr2b/*`, which the api policy can read. The kubeconfig stays a mounted file: Jenkins needs it to reach the cluster before it could reach Vault inside it |
+| 14 | Logs and Kibana dashboards only (ELK) | Also Prometheus + Grafana (`deploy/k8s-monitoring`): app metrics from `/metrics` on api and worker, pod CPU and memory from the kubelet's cAdvisor, one provisioned read-only dashboard | The 2026-27 statement asks for metrics dashboards; cAdvisor instead of kube-state-metrics and node-exporter keeps it at ~200 MiB on a 6 GB minikube |
+| 12 | Jenkins reads Docker Hub and kubeconfig credentials from Vault | The Docker Hub token only (stored with its user at `secret/jenkins/dockerhub`), read with an AppRole whose policy allows that one path; Vault gets NodePort 30820 so Jenkins outside the cluster reaches it | The token sits outside `secret/gstr2b/*`, which the api policy can read. The kubeconfig stays a mounted file: Jenkins needs it to reach the cluster before it could reach Vault inside it |
