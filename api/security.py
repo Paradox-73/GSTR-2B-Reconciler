@@ -8,7 +8,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from api.db import get_db
-from api.settings import get_settings
+from api.settings import MAX_PASSWORD_BYTES, get_settings
 from api.tables import User
 
 _bearer = HTTPBearer(auto_error=False)
@@ -22,7 +22,10 @@ DUMMY_HASH = bcrypt.hashpw(b"not-a-real-password", bcrypt.gensalt()).decode()
 
 
 def verify_password(password: str, hashed: str) -> bool:
-    return bcrypt.checkpw(password.encode(), hashed.encode())
+    raw = password.encode()
+    if len(raw) > MAX_PASSWORD_BYTES:  # can't be a password we stored, so it's just wrong
+        return False
+    return bcrypt.checkpw(raw, hashed.encode())
 
 
 def create_token(user: User) -> str:
