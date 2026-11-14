@@ -35,6 +35,11 @@ What the minikube runs on a Windows laptop (docker driver, minikube 1.39, k8s 1.
    at part 8 (`deploy/elk/README.md`).
 5. Test data: `python -m datagen --seed 1 --invoices 300 --out demo-data --xlsx`
 6. Workers idle at 1 replica: `kubectl -n gstr2b get hpa worker` shows `REPLICAS 1`.
+7. Prometheus + Grafana up (small, ~200 MiB, so they stay on the whole demo):
+   `... site.yml --tags monitoring`, then
+   `kubectl -n monitoring port-forward svc/grafana 3000:3000` and open `http://localhost:3000`.
+   The home page is the "GSTR-2B ops" dashboard; no login, it's read-only and comes from
+   `deploy/k8s-monitoring/dashboards/`.
 
 ## 1. The app
 
@@ -49,7 +54,9 @@ reason codes, a vendor note, the Excel export, and the model version on the run 
 2. Make a visible change (e.g. a word in the header in `frontend/src`), commit, push to `main`.
 3. Jenkins starts by itself (webhook). Stages: tests -> golden set -> model gate -> build ->
    Trivy -> push -> Ansible deploy -> smoke test.
-4. Refresh the browser: the change and the new build label (git sha) in the header.
+4. Refresh the browser: the change and the new build label (git sha) in the header. In Grafana
+   the "Version live" panel shows the old and new sha side by side during the rollout, then only
+   the new one.
 5. k6 finishes: `http_req_failed 0.00%` [0 of 4,131 during an api+frontend rollout].
 
 ## 5. A bad commit gets blocked
@@ -65,6 +72,8 @@ python -m datagen --seed 77 --invoices 2000 --suppliers 200 --out tests/load/dat
 docker run --rm -v $PWD/tests/load:/load -w /load grafana/k6:0.54.0 run -e BASE_URL=http://<app> -e EMAIL=... -e PASSWORD=... -e PEAK=8 -e HOLD=2m spike.js
 kubectl -n gstr2b get hpa worker -w          # second terminal
 ```
+
+Grafana's "Worker pods vs worker CPU" panel shows the same scale-up as a graph.
 
 [1 -> 4 -> 5 workers in ~85s; 234 runs of 2000 invoices, 0 failed, p95 run 10.1s]
 

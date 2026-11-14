@@ -33,16 +33,11 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: api
-      # Target setup once Vault (#19) is live. The injector writes /vault/secrets/db
-      # and the app reads it through DATABASE_URL_FILE (docs/runtime-contract.md).
-      # annotations:
-      #   vault.hashicorp.com/agent-inject: "true"
-      #   vault.hashicorp.com/role: "api"
-      #   vault.hashicorp.com/agent-inject-secret-db: "secret/data/gstr2b/db"
-      #   vault.hashicorp.com/agent-inject-template-db: |
-      #     {{- with secret "secret/data/gstr2b/db" -}}
-      #     postgresql+psycopg://{{ .Data.data.username }}:{{ .Data.data.password }}@postgres:5432/gstr2b
-      #     {{- end -}}
+      # Prometheus scrapes /metrics here (deploy/k8s-monitoring). The Vault annotations live in
+      # the deploy/k8s-vault overlay.
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
     spec:
       serviceAccountName: api
       securityContext:

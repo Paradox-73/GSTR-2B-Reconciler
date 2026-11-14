@@ -4,7 +4,7 @@ Two playbooks, both run against `localhost` (the laptop that hosts minikube and 
 
 | Playbook | Roles | When |
 |---|---|---|
-| `site.yml` | common, docker, k8s_cluster, vault, elk, app_deploy | once, on a fresh Ubuntu machine |
+| `site.yml` | common, docker, k8s_cluster, vault, elk, monitoring, app_deploy | once, on a fresh Ubuntu machine |
 | `deploy.yml` | app_deploy | every commit; Jenkins runs it with the new image tag |
 
 | Role | What it does |
@@ -14,6 +14,7 @@ Two playbooks, both run against `localhost` (the laptop that hosts minikube and 
 | `k8s_cluster` | kubectl, minikube and helm binaries; starts minikube; enables ingress and metrics-server |
 | `vault` | Vault Helm chart (namespace `vault`, injector on); KV v2, Transit key `uploads`, Kubernetes auth, policies and roles for api/worker/trainer |
 | `elk` | Elasticsearch, Logstash, Kibana, Filebeat in namespace `logging`; configs from `deploy/elk/` |
+| `monitoring` | Prometheus + Grafana in namespace `monitoring`, built with kustomize from `deploy/k8s-monitoring/` |
 | `app_deploy` | pins image tags, starts postgres, runs the migrations Job, applies `deploy/k8s`, waits for every rollout |
 
 Settings (namespace, minikube size, ELK heap, Docker Hub user) are in `group_vars/all.yml`.

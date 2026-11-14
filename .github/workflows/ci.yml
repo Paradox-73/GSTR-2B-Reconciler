@@ -43,6 +43,7 @@ jobs:
           kubectl kustomize deploy/k8s > /dev/null
           kubectl kustomize deploy/k8s/migrations > /dev/null
           kubectl kustomize deploy/k8s-vault > /dev/null
+          kubectl kustomize deploy/k8s-monitoring > /dev/null
       - name: ansible syntax
         run: |
           pip install -q ansible-core==2.17.7
