@@ -15,7 +15,9 @@ data/uploads/
 *.log
 .idea/
 .vscode/
-.claude/
+# editor and tool folders at the root; .github is the only one tracked
+/.*/
+!/.github/
 dev.db
 data/
 deploy/k8s/secret.yaml
