@@ -18,3 +18,6 @@ data/uploads/
 .claude/
 dev.db
 data/
+deploy/k8s/secret.yaml
+deploy/jenkins/.env
+deploy/jenkins/kubeconfig

@@ -1,0 +1,7 @@
+# Rolls out one image tag. Jenkins runs this on every commit:
+#   ansible-playbook -i inventory/hosts.ini deploy.yml -e image_tag=<sha> -e dockerhub_user=<user>
+- name: Deploy the GSTR-2B Reconciler
+  hosts: local
+  gather_facts: false
+  roles:
+    - app_deploy

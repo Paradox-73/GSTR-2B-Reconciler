@@ -1,0 +1,72 @@
+# Everything comes from env vars set in deploy/jenkins/.env (see .env.example). Nothing secret here.
+jenkins:
+  systemMessage: "GSTR-2B Reconciler CI"
+  numExecutors: 2
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "admin"
+          password: "${JENKINS_ADMIN_PASSWORD}"
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
+  globalNodeProperties:
+    - envVars:
+        env:
+          - key: DOCKERHUB_USER
+            value: "${DOCKERHUB_USER}"
+          - key: APP_URL
+            value: "${APP_URL:-}"
+          - key: APP_USE_VAULT
+            value: "${APP_USE_VAULT:-false}"
+          - key: REGISTRY
+            value: "${REGISTRY:-}"
+
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - usernamePassword:
+              scope: GLOBAL
+              id: dockerhub
+              description: Docker Hub push (moves to the Vault plugin, #19)
+              username: "${DOCKERHUB_USER}"
+              password: "${DOCKERHUB_TOKEN}"
+          - usernamePassword:
+              scope: GLOBAL
+              id: smoke-user
+              description: app login the smoke test uses
+              username: "${SMOKE_EMAIL}"
+              password: "${SMOKE_PASSWORD}"
+
+unclassified:
+  location:
+    url: "${JENKINS_URL:-http://localhost:8081/}"
+
+# The job, with "GitHub hook trigger for GITScm polling" on from the start (a trigger declared
+# only inside the Jenkinsfile registers after the first build).
+jobs:
+  - script: |
+      pipelineJob('gstr2b-reconciler') {
+        properties {
+          pipelineTriggers {
+            triggers {
+              githubPush()
+            }
+          }
+        }
+        definition {
+          cpsScm {
+            scm {
+              git {
+                remote {
+                  url('https://github.com/Paradox-73/GSTR-2B-Reconciler.git')
+                }
+                branch('${JENKINS_GIT_BRANCH:-*/main}')
+              }
+            }
+            scriptPath('Jenkinsfile')
+          }
+        }
+      }

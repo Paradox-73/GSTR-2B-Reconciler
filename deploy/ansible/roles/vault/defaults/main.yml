@@ -1,0 +1,34 @@
+vault_namespace: vault
+vault_chart_version: "0.29.1"
+
+# Dev mode keeps data in memory, starts unsealed and is logged in as root inside
+# the pod. Everything this role configures is lost when vault-0 restarts; re-run
+# the role (and re-enter the KV secrets) after that.
+vault_dev_mode: true
+
+vault_cli: "kubectl -n {{ vault_namespace }} exec -i vault-0 -- vault"
+
+# One policy and one Kubernetes auth role per workload, bound to the
+# ServiceAccount of the same name in the app namespace (deploy/k8s/serviceaccounts.yaml).
+vault_app_policies:
+  api: |
+    path "secret/data/gstr2b/*" {
+      capabilities = ["read"]
+    }
+    path "transit/encrypt/uploads" {
+      capabilities = ["update"]
+    }
+    path "transit/decrypt/uploads" {
+      capabilities = ["update"]
+    }
+  worker: |
+    path "secret/data/gstr2b/db" {
+      capabilities = ["read"]
+    }
+    path "transit/decrypt/uploads" {
+      capabilities = ["update"]
+    }
+  trainer: |
+    path "secret/data/gstr2b/db" {
+      capabilities = ["read"]
+    }

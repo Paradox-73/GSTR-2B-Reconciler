@@ -1,0 +1,20 @@
+# Override any of these with -e on the command line (Jenkins passes image_tag and dockerhub_user).
+
+app_namespace: gstr2b
+dockerhub_user: "" # required by deploy.yml
+image_tag: latest
+
+k8s_dir: "{{ playbook_dir | dirname }}/k8s"
+elk_config_dir: "{{ playbook_dir | dirname }}/elk"
+
+# Whoever runs site.yml owns minikube and gets added to the docker group.
+target_user: "{{ ansible_user_id }}"
+deb_arch: "{{ 'arm64' if ansible_architecture == 'aarch64' else 'amd64' }}"
+
+minikube_cpus: 4
+minikube_memory: 6144 # MB, 8192 does not fit next to Docker Desktop on a 16 GB laptop
+
+elk_namespace: logging
+elk_version: "8.15.3"
+elasticsearch_heap: 512m
+logstash_heap: 256m

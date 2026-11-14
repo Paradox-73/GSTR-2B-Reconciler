@@ -31,7 +31,8 @@ before each api rollout, and as a one-shot service in compose.
 | `RETENTION_DAYS` | api (deletes uploaded files older than this, hourly) | `90` | no |
 | `MLFLOW_TRACKING_URI` | worker, trainer | `http://mlflow:5000`. Unset = worker uses the model baked into the image | no |
 | `MODEL_POLL_SECONDS` | worker | `60` | no |
-| `VAULT_ADDR` | api (Transit encryption, week 3) | `http://vault:8200` | no |
+| `VAULT_ADDR` | api (Transit encryption) | `http://vault.vault.svc:8200` in K8s (Vault lives in its own `vault` namespace), `http://vault:8200` in compose | no |
+| `VAULT_TOKEN` | api | Vault token with encrypt/decrypt on `transit/keys/uploads`. In K8s use `VAULT_TOKEN_FILE=/vault/secrets/token` | yes |
 
 Any secret var can instead be given as `<VAR>_FILE=/path/to/file` and the app reads the file. That is
 how Vault Agent Injector hands secrets over (`/vault/secrets/<name>`), so manifests never hold the

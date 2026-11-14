@@ -1,0 +1,116 @@
+# add_kubernetes_metadata looks up pod, namespace and node details, hence the ClusterRole.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: filebeat
+  namespace: "{{ elk_namespace }}"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: filebeat
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces", "pods", "nodes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: filebeat
+subjects:
+  - kind: ServiceAccount
+    name: filebeat
+    namespace: "{{ elk_namespace }}"
+roleRef:
+  kind: ClusterRole
+  name: filebeat
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: filebeat-config
+  namespace: "{{ elk_namespace }}"
+data:
+  filebeat.yml: |
+    {{ lookup('ansible.builtin.file', elk_config_dir ~ '/filebeat.yml') | indent(4) }}
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: filebeat
+  namespace: "{{ elk_namespace }}"
+  labels:
+    app.kubernetes.io/name: filebeat
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: filebeat
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: filebeat
+      annotations:
+        checksum/config: "{{ lookup('ansible.builtin.file', elk_config_dir ~ '/filebeat.yml') | hash('sha256') }}"
+    spec:
+      serviceAccountName: filebeat
+      containers:
+        - name: filebeat
+          image: "docker.elastic.co/beats/filebeat:{{ elk_version }}"
+          args: ["-c", "/etc/filebeat.yml", "-e"]
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          securityContext:
+            runAsUser: 0 # container log files on the node are readable by root only
+          resources:
+            requests:
+              cpu: 50m
+              memory: 100Mi
+            limits:
+              cpu: 200m
+              memory: 200Mi
+          volumeMounts:
+            - name: config
+              mountPath: /etc/filebeat.yml
+              subPath: filebeat.yml
+              readOnly: true
+            - name: data
+              mountPath: /usr/share/filebeat/data
+            - name: varlogcontainers
+              mountPath: /var/log/containers
+              readOnly: true
+            - name: varlogpods
+              mountPath: /var/log/pods
+              readOnly: true
+            - name: varlibdockercontainers
+              mountPath: /var/lib/docker/containers
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: filebeat-config
+            defaultMode: 0640
+        # Keeps Filebeat's read offsets across restarts so lines are not shipped twice.
+        - name: data
+          hostPath:
+            path: /var/lib/filebeat-data
+            type: DirectoryOrCreate
+        - name: varlogcontainers
+          hostPath:
+            path: /var/log/containers
+        - name: varlogpods
+          hostPath:
+            path: /var/log/pods
+        - name: varlibdockercontainers
+          hostPath:
+            path: /var/lib/docker/containers

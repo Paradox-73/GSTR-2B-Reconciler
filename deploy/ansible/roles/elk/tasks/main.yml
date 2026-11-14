@@ -1,0 +1,21 @@
+# Plain manifests rather than Elastic's Helm charts: Elastic no longer maintains those charts,
+# and they turn on TLS plus generated passwords, which a single-node laptop stack does not need.
+- name: Create the logging namespace
+  kubernetes.core.k8s:
+    api_version: v1
+    kind: Namespace
+    name: "{{ elk_namespace }}"
+    state: present
+
+# Order matters: Logstash needs Elasticsearch, Filebeat needs Logstash.
+- name: Deploy Elasticsearch, Logstash, Kibana and Filebeat
+  kubernetes.core.k8s:
+    state: present
+    template: "{{ item }}"
+    wait: true
+    wait_timeout: 600
+  loop:
+    - elasticsearch.yaml.j2
+    - logstash.yaml.j2
+    - kibana.yaml.j2
+    - filebeat.yaml.j2

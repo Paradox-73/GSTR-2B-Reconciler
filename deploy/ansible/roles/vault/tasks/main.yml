@@ -1,0 +1,136 @@
+- name: Add the HashiCorp Helm repository
+  kubernetes.core.helm_repository:
+    name: hashicorp
+    repo_url: https://helm.releases.hashicorp.com
+
+- name: Install Vault with the Agent Injector
+  kubernetes.core.helm:
+    name: vault
+    chart_ref: hashicorp/vault
+    chart_version: "{{ vault_chart_version }}"
+    release_namespace: "{{ vault_namespace }}"
+    create_namespace: true
+    update_repo_cache: true
+    values:
+      server:
+        dev:
+          enabled: "{{ vault_dev_mode }}"
+      injector:
+        enabled: true
+
+# Waits for Running, not Ready: a sealed Vault never turns Ready.
+- name: Wait for the vault-0 pod to start
+  ansible.builtin.command: >-
+    kubectl -n {{ vault_namespace }} wait pod/vault-0
+    --for=jsonpath={.status.phase}=Running --timeout=30s
+  register: vault_pod
+  until: vault_pod.rc == 0
+  retries: 10
+  delay: 10
+  changed_when: false
+
+- name: Read the Vault seal status
+  ansible.builtin.command: "{{ vault_cli }} status -format=json"
+  register: vault_status
+  changed_when: false
+  failed_when: vault_status.rc not in [0, 2] # 2 means sealed
+
+# TODO(#19): outside dev mode, init and unseal are manual steps for now.
+- name: Stop if Vault is sealed
+  ansible.builtin.fail:
+    msg: >-
+      Vault is sealed. Run `vault operator init` once inside vault-0, keep the unseal keys
+      and root token outside git, run `vault operator unseal` three times, run `vault login`
+      inside the pod, then re-run this role.
+  when: (vault_status.stdout | from_json).sealed
+
+# Dev mode already mounts kv-v2 at secret/, hence the "already in use" case.
+- name: Enable the KV and Transit secrets engines
+  ansible.builtin.command: "{{ vault_cli }} secrets enable -path={{ item.path }} {{ item.type }}"
+  loop:
+    - { path: secret, type: kv-v2 }
+    - { path: transit, type: transit }
+  register: vault_engine
+  changed_when: vault_engine.rc == 0
+  failed_when: vault_engine.rc != 0 and 'path is already in use' not in vault_engine.stderr
+
+- name: Check for the uploads Transit key
+  ansible.builtin.command: "{{ vault_cli }} read transit/keys/uploads"
+  register: vault_uploads_key
+  changed_when: false
+  failed_when: false
+
+- name: Create the uploads Transit key
+  ansible.builtin.command: "{{ vault_cli }} write -f transit/keys/uploads"
+  when: vault_uploads_key.rc != 0
+
+- name: Enable Kubernetes auth
+  ansible.builtin.command: "{{ vault_cli }} auth enable kubernetes"
+  register: vault_k8s_auth
+  changed_when: vault_k8s_auth.rc == 0
+  failed_when: vault_k8s_auth.rc != 0 and 'path is already in use' not in vault_k8s_auth.stderr
+
+# Vault runs in-cluster, so it uses its own ServiceAccount token and CA to call the API server.
+- name: Point Kubernetes auth at the cluster API server
+  ansible.builtin.command: "{{ vault_cli }} write auth/kubernetes/config kubernetes_host=https://kubernetes.default.svc"
+  changed_when: false # overwrites with the same value on every run
+
+- name: Read the current app policies
+  ansible.builtin.command: "{{ vault_cli }} policy read gstr2b-{{ item.key }}"
+  loop: "{{ vault_app_policies | dict2items }}"
+  register: vault_current_policies
+  changed_when: false
+  failed_when: false
+
+- name: Write app policies that are missing or changed
+  ansible.builtin.command: "{{ vault_cli }} policy write gstr2b-{{ item.item.key }} -"
+  args:
+    stdin: "{{ item.item.value }}"
+  loop: "{{ vault_current_policies.results }}"
+  loop_control:
+    label: "gstr2b-{{ item.item.key }}"
+  when: item.stdout | trim != item.item.value | trim
+
+- name: Bind each app ServiceAccount to its policy
+  ansible.builtin.command: >-
+    {{ vault_cli }} write auth/kubernetes/role/{{ item }}
+    bound_service_account_names={{ item }}
+    bound_service_account_namespaces={{ app_namespace }}
+    policies=gstr2b-{{ item }}
+    ttl=1h
+  loop: "{{ vault_app_policies.keys() | list }}"
+  changed_when: false # overwrites with the same values on every run
+
+# Dev-mode Vault forgets everything on restart (seen on a test cluster: pods with the vault-agent
+# sidecar then hang at init). Seeding KV from the app's Kubernetes Secret makes recovery one run of
+# this role. Values go in on stdin with no_log, so they never show in process lists or output.
+- name: Read the app's Kubernetes Secret
+  ansible.builtin.command: "kubectl -n {{ app_namespace }} get secret gstr2b-secrets -o json"
+  register: vault_app_secret
+  changed_when: false
+  failed_when: false
+  no_log: true
+
+- name: Check which KV secrets exist
+  ansible.builtin.command: "{{ vault_cli }} kv get -format=json secret/gstr2b/{{ item }}"
+  register: vault_kv_present
+  loop: [db, app]
+  changed_when: false
+  failed_when: false
+
+- name: Seed missing KV secrets from the Kubernetes Secret
+  ansible.builtin.command:
+    cmd: "{{ vault_cli }} kv put secret/gstr2b/{{ item.item }} -"
+    stdin: "{{ vault_kv_values[item.item] | to_json }}"
+  vars:
+    vault_k8s: "{{ (vault_app_secret.stdout | from_json).data }}"
+    vault_kv_values:
+      db:
+        username: gstr2b
+        password: "{{ vault_k8s.POSTGRES_PASSWORD | b64decode }}"
+      app:
+        jwt_secret: "{{ vault_k8s.JWT_SECRET | b64decode }}"
+        admin_password: "{{ vault_k8s.ADMIN_PASSWORD | b64decode }}"
+  loop: "{{ vault_kv_present.results }}"
+  when: vault_app_secret.rc == 0 and item.rc != 0
+  no_log: true
