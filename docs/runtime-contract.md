@@ -25,13 +25,14 @@ before each api rollout, and as a one-shot service in compose.
 | `DATABASE_URL` | api, worker, migrations, trainer | `postgresql+psycopg://gstr2b:<pw>@postgres:5432/gstr2b` | yes |
 | `REDIS_URL` | api, worker | `redis://redis:6379/0` | no |
 | `JWT_SECRET` | api | 32+ random chars | yes |
-| `ADMIN_EMAIL`, `ADMIN_PASSWORD` | api (creates the first user at startup if missing) | | password yes |
+| `ADMIN_EMAIL`, `ADMIN_PASSWORD` | api (creates the first user at startup if missing) | password at most 72 bytes (bcrypt limit) | password yes |
 | `UPLOAD_DIR` | api | `/data/uploads` (volume, writable by uid 10001) | no |
 | `LOG_LEVEL` | all | `INFO` | no |
 | `RETENTION_DAYS` | api (deletes uploaded files older than this, hourly) | `90` | no |
 | `MLFLOW_TRACKING_URI` | worker, trainer | `http://mlflow:5000`. Unset = worker uses the model baked into the image | no |
 | `MODEL_POLL_SECONDS` | worker | `60` | no |
-| `VAULT_ADDR` | api (Transit encryption, week 3) | `http://vault:8200` | no |
+| `VAULT_ADDR` | api (Transit encryption) | `http://vault.vault.svc:8200` in K8s (Vault lives in its own `vault` namespace), `http://vault:8200` in compose | no |
+| `VAULT_TOKEN` | api | Vault token with encrypt/decrypt on `transit/keys/uploads`. In K8s use `VAULT_TOKEN_FILE=/vault/secrets/token` | yes |
 
 Any secret var can instead be given as `<VAR>_FILE=/path/to/file` and the app reads the file. That is
 how Vault Agent Injector hands secrets over (`/vault/secrets/<name>`), so manifests never hold the

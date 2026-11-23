@@ -1,0 +1,13 @@
+# Bumping a version here does not replace a binary that is already installed;
+# delete it from /usr/local/bin first.
+kubectl_version: "1.31.4"
+minikube_version: "1.34.0"
+helm_version: "3.16.3"
+
+minikube_driver: docker
+# `sg docker -c` runs minikube with the docker group before you have logged out and
+# back in after the docker role added you to it. Docker Desktop (WSL) users: "sh -c".
+minikube_shell: sg docker -c
+minikube_addons:
+  - ingress
+  - metrics-server

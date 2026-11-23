@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+spec:
+  template:
+    metadata:
+      annotations:
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: "worker"
+        vault.hashicorp.com/agent-inject-secret-db: "secret/data/gstr2b/db"
+        vault.hashicorp.com/agent-inject-template-db: |
+          {{- with secret "secret/data/gstr2b/db" -}}
+          postgresql+psycopg://{{ .Data.data.username }}:{{ .Data.data.password }}@postgres:5432/gstr2b
+          {{- end -}}
+        # Sidecar runs as the app's uid so the app can read the files it writes (the token file
+        # was 0640 owned by the agent's own user: Permission denied, uploads got 503)
+        vault.hashicorp.com/agent-run-as-user: "10001"
+        vault.hashicorp.com/agent-run-as-group: "10001"
+        vault.hashicorp.com/agent-requests-cpu: "10m"
+        vault.hashicorp.com/agent-limits-cpu: "100m"
+        vault.hashicorp.com/agent-requests-mem: "32Mi"
+        vault.hashicorp.com/agent-limits-mem: "64Mi"
+    spec:
+      containers:
+        - name: worker
+          env:
+            - name: DATABASE_URL_FILE
+              value: /vault/secrets/db

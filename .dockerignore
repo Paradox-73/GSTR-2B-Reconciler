@@ -1,6 +1,5 @@
-.git
-.github
-.claude
+# every dotfile and dot-folder at the root (.git, .github, editor and tool folders)
+.*
 **/__pycache__
 **/*.pyc
 .venv

@@ -99,3 +99,23 @@ def test_bad_row_reports_line():
 def test_unsupported_file(tmp_path):
     with pytest.raises(ParseError):
         load_books(tmp_path / "x.pdf", MAPPING)
+
+
+def test_blank_cells_are_blank_not_nan(tmp_path):
+    df = _books_df()
+    df.loc[0, "Party Name"] = None
+    df.to_csv(tmp_path / "b.csv", index=False)
+    df.to_excel(tmp_path / "b.xlsx", index=False)
+    for f in ("b.csv", "b.xlsx"):
+        (inv,) = load_books(tmp_path / f, MAPPING)
+        assert inv.supplier_name == ""
+
+
+def test_blank_invoice_no_is_refused(tmp_path):
+    df = _books_df()
+    df.loc[0, "Bill No"] = None
+    df.to_csv(tmp_path / "b.csv", index=False)
+    df.to_excel(tmp_path / "b.xlsx", index=False)
+    for f in ("b.csv", "b.xlsx"):
+        with pytest.raises(ParseError, match="row 2: invoice number is blank"):
+            load_books(tmp_path / f, MAPPING)

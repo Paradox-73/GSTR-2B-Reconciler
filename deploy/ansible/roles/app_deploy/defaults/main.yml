@@ -1,0 +1,19 @@
+# Image names after DOCKERHUB_USER/ in deploy/k8s/kustomization.yaml.
+app_images:
+  - gstr2b-api
+  - gstr2b-worker
+  - gstr2b-frontend
+  - gstr2b-trainer
+
+app_deployments:
+  - api
+  - worker
+  - frontend
+  - mlflow
+
+app_rollout_timeout: 300s
+app_migration_timeout_s: 300
+
+# true once roles/vault has run and the KV secrets exist: deploys deploy/k8s-vault (secrets from
+# Vault through the agent injector, uploads encrypted with Transit) instead of deploy/k8s
+app_use_vault: false
