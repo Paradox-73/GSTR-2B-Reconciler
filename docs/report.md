@@ -6,7 +6,7 @@
 | Team | Kanav Bhardwaj (Paradox-73), Bhavya Jain (Bhavzzzzzz) |
 | Repository | https://github.com/Paradox-73/GSTR-2B-Reconciler |
 
-> Draft of 23 November 2026. Open items: the GitHub webhook trigger (#14), Bhavya's challenge notes (#90), the two demo rehearsals (#26).
+> Draft of 23 November 2026. Open items: the GitHub webhook trigger (#14), Bhavya's challenge notes (#90), the backup recording (#91), the two demo rehearsals (#26).
 
 ## 1. The application
 
@@ -124,7 +124,7 @@ Minimum: 4 CPU cores and 8 GB RAM for Docker (minikube gets 6 GB). ELK is the la
 
 Both of us wrote application code and DevOps code, and the Git trail shows it: 48 pull requests, every one of them reviewed before merge, `main` protected so nothing lands without one.
 
-As of 23 November, `git shortlog -sne main` counts 64 commits from Kanav (under two Git identities, both his) and 4 from Bhavya. Bhavya's seven reviewed pull requests (#76-#80, #84, #85) merge over the final week, each as one commit in his name, and #39 was merged as a merge commit rather than squashed so that his four infra commits keep their author on `main`. He also filed the seven issues those PRs close (#70-#75, #86) from his own review of the application code. A signed contribution statement is in `docs/contribution-statement.md`.
+As of 23 November, `git shortlog -sne main` counts 64 commits from Kanav and 7 from Bhavya (each of us has two Git identities on the history, a local one and a GitHub one). Of Bhavya's seven reviewed pull requests, #76, #77 and #78 are merged and #79, #80, #84 and #85 merge over the final week, each as one commit in his name; #39 was merged as a merge commit rather than squashed so that his four infra commits keep their author on `main`. He also filed the seven issues those pull requests close, from his own review of the application code. Of 48 pull requests, 42 are merged, every one reviewed before merge, with `main` protected so nothing lands without one. A signed contribution statement is in `docs/contribution-statement.md`.
 
 | Member | Code | DevOps |
 |---|---|---|
