@@ -33,6 +33,14 @@ def _when(d: date) -> str:
     return d.strftime("%d-%m-%Y")
 
 
+def _amounts(i: Invoice, with_cess) -> str:
+    # Cess only when either side has some: a cess-only difference would otherwise read as
+    # "amounts differ" followed by two identical lines
+    text = (f"taxable {inr(i.taxable)}, IGST {inr(i.igst)}, CGST {inr(i.cgst)}, "
+            f"SGST {inr(i.sgst)}")
+    return f"{text}, cess {inr(i.cess)}" if with_cess else text
+
+
 def note(supplier_name: str, period: str, client_name: str, client_gstin: str,
          lines: list[NoteLine]) -> str | None:
     """None when nothing needs chasing with this supplier."""
@@ -57,9 +65,8 @@ def note(supplier_name: str, period: str, client_name: str, client_gstin: str,
         for ln in sorted(differ, key=lambda x: (x.books.inv_date, x.books.inv_no_raw)):
             b, g = ln.books, ln.gstr2b
             out.append(f"- Invoice {b.inv_no_raw} dated {_when(b.inv_date)}: as per invoice, "
-                       f"taxable {inr(b.taxable)}, IGST {inr(b.igst)}, CGST {inr(b.cgst)}, SGST "
-                       f"{inr(b.sgst)}; as per GSTR-2B, taxable {inr(g.taxable)}, IGST "
-                       f"{inr(g.igst)}, CGST {inr(g.cgst)}, SGST {inr(g.sgst)}")
+                       f"{_amounts(b, b.cess or g.cess)}; as per GSTR-2B, "
+                       f"{_amounts(g, b.cess or g.cess)}")
         out.append("")
     out += ["We can claim input tax credit only once these are correct in your return. "
             "Please let us know once done.", "", "Regards,", client_name]

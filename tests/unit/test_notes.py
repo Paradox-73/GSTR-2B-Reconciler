@@ -5,9 +5,9 @@ from matcher.models import BOOKS, GSTR2B, Invoice
 from matcher.notes import NoteLine, inr, note
 
 
-def inv(src, no, taxable="1000", igst="0", cgst="90", sgst="90"):
+def inv(src, no, taxable="1000", igst="0", cgst="90", sgst="90", cess="0"):
     return Invoice(f"{src}1", src, "27AAPFU0939F1ZV", "Shree", no, date(2025, 4, 5), D(taxable),
-                   D(igst), D(cgst), D(sgst), D(0))
+                   D(igst), D(cgst), D(sgst), D(cess))
 
 
 def test_inr_grouping():
@@ -39,3 +39,12 @@ def test_no_note_when_nothing_to_chase():
 def test_deterministic():
     lines = [NoteLine(("MISSING_IN_2B",), inv(BOOKS, n), None) for n in ("B", "A")]
     assert note("X", "2025-04", "A", "G", lines) == note("X", "2025-04", "A", "G", lines[::-1])
+
+
+def test_cess_shown_only_when_there_is_some():
+    text = note("X", "2025-04", "A", "G", [
+        NoteLine(("TAX_DIFF",), inv(BOOKS, "C/1", cess="10"), inv(GSTR2B, "C/1", cess="50"))])
+    assert "cess ₹10.00; as per GSTR-2B" in text and text.count("cess ₹50.00") == 1
+    plain = note("X", "2025-04", "A", "G", [
+        NoteLine(("VALUE_DIFF",), inv(BOOKS, "C/2"), inv(GSTR2B, "C/2", "1100"))])
+    assert "cess" not in plain
