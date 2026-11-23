@@ -6,7 +6,7 @@
 | Team | Kanav Bhardwaj (Paradox-73), Bhavya Jain (Bhavzzzzzz) |
 | Repository | https://github.com/Paradox-73/GSTR-2B-Reconciler |
 
-> Draft. Sections marked TODO wait on open issues (#14 webhook, #26 rehearsal).
+> Draft of 23 November 2026. Open items: the GitHub webhook trigger (#14), Bhavya's challenge notes (#90), the two demo rehearsals (#26).
 
 ## 1. The application
 
@@ -122,9 +122,32 @@ Minimum: 4 CPU cores and 8 GB RAM for Docker (minikube gets 6 GB). ELK is the la
 
 ## 9. Contributions
 
-TODO: fill in from the git history at submission time, and sign the separate contribution statement.
+Both of us wrote application code and DevOps code, and the Git trail shows it: 48 pull requests, every one of them reviewed before merge, `main` protected so nothing lands without one.
+
+As of 23 November, `git shortlog -sne main` counts 64 commits from Kanav (under two Git identities, both his) and 4 from Bhavya. Bhavya's seven reviewed pull requests (#76-#80, #84, #85) merge over the final week, each as one commit in his name, and #39 was merged as a merge commit rather than squashed so that his four infra commits keep their author on `main`. He also filed the seven issues those PRs close (#70-#75, #86) from his own review of the application code. A signed contribution statement is in `docs/contribution-statement.md`.
 
 | Member | Code | DevOps |
 |---|---|---|
 | Kanav Bhardwaj | datagen, matcher, model, trainer, api, frontend | CI on pull requests, first drafts of Jenkinsfile, K8s manifests, Ansible roles, Vault and ELK; Prometheus + Grafana (#67), SBOM (#68), Jenkins reads Docker Hub token from Vault (#19); k3s test runs |
 | Bhavya Jain | review of the app code and five bug fixes with tests (#76-#80); app metrics on the api and worker (#84); warning for GSTR-2B sections v1 doesn't reconcile (#85) | minikube bring-up and fixes, Docker Hub, Jenkins on the real cluster, ELK and Vault in-cluster, load tests, rollback fix for rebuilds, `site.yml` on a fresh machine |
+
+## 10. Where each requirement is met
+
+| Course requirement | In this project | Evidence |
+|---|---|---|
+| Version control: Git and GitHub | Issue per task, branch per issue, pull request with `Closes #n`, protected `main`, squash merge | 48 pull requests, `CONTRIBUTING.md` |
+| CI/CD: Jenkins, GitHub hook trigger for GITScm polling, pipelines | Declarative `Jenkinsfile`, 9 stages; Jenkins itself defined as code in `deploy/jenkins/` (Configuration as Code) | Section 3, issues #14, #15, #21 |
+| Automated tests in the pipeline | ruff, pytest, Vitest, then the golden-set test, then the model quality gate; any failure stops the build before the image is pushed | Section 3, `tests/` |
+| Containerization: Docker and Docker Compose | One `Dockerfile` with four targets (api, worker, trainer; frontend has its own), `deploy/docker-compose.yml` for the local stack and `deploy/docker-compose.elk.yml` for the logging overlay | Section 2 |
+| Push images to Docker Hub | Jenkins Push stage, one repository per image, tagged `:<git-sha>` and `:latest`; the token comes from Vault, not from Jenkins credentials | Issue #83 |
+| Configuration management: Ansible playbooks | `deploy/ansible/site.yml` on a fresh Ubuntu 24.04 machine, idempotent on rerun (two PLAY RECAPs) | Issue #18 |
+| Modular design: roles in Ansible | Seven roles: `common`, `docker`, `k8s_cluster`, `vault`, `elk`, `monitoring`, `app_deploy` | `deploy/ansible/roles/` |
+| Orchestration and scaling: Kubernetes | `deploy/k8s` (kustomize): namespace, config, secrets, Postgres, Redis, MLflow, api, worker, trainer CronJob, frontend, ingress | Issues #16, #17 |
+| High availability and scalability: HPA | `deploy/k8s/hpa.yaml` on api, worker and frontend; measured 1 -> 5 worker pods under a k6 spike | Section 6, issue #24 |
+| Live patching: changes visible with no downtime | Rolling update with readiness gates and a `preStop` delay; 7,203 requests through a restart of api and frontend, 0 failed | Section 6 |
+| Monitoring and logging: ELK + Kibana dashboards | Filebeat -> Logstash -> Elasticsearch -> Kibana; four dashboards built by `deploy/elk/build_dashboards.py` and imported by the `elk` role | Section 4, issues #20, #25 |
+| Secure storage: Vault | KV secrets injected into pods (Kubernetes auth, one policy per service), uploads encrypted with the Transit engine, Jenkins' Docker Hub token behind an AppRole | Section 5, issues #19, #83 |
+| Innovation | Model quality gate in the pipeline, retraining from the reviewer's own decisions, promotion by MLflow alias and hot-swap into running workers without a restart; Trivy gate with a CycloneDX SBOM per image | Section 5, issues #82, #84 |
+| Domain-specific | Finance: GST input tax credit reconciliation, with the financial result itself tested on every commit. MLOps: the full train -> gate -> register -> promote -> serve loop | Sections 1 and 5 |
+
+Beyond the mandatory list: Prometheus and Grafana for metrics next to the ELK logs (issue #81), so the running application is observable both ways.
