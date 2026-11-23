@@ -120,7 +120,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "count(count by (pod) (container_memory_working_set_bytes{container=\"worker\"}))",
+          "expr": "count(up{service=\"worker\"})",
           "legendFormat": "workers"
         }
       ],
@@ -336,7 +336,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "count(count by (pod) (container_memory_working_set_bytes{container=\"worker\"}))",
+          "expr": "count(up{service=\"worker\"})",
           "legendFormat": "worker pods"
         },
         {
