@@ -125,7 +125,7 @@ describe('client page uploads', () => {
       ['GET', /\/clients\/c1\/uploads\?period=2025-04$/, { body: [
         booksUpload,
         { id: 'u0', kind: 'books', period: '2025-04', original_name: 'old.xlsx', invoice_count: 50, uploaded_at: '2025-05-01T09:00:00' },
-        { id: 'g1', kind: 'gstr2b', period: '2025-04', original_name: '2b.json', invoice_count: 41, uploaded_at: '2025-05-01T08:00:00' },
+        { id: 'g1', kind: 'gstr2b', period: '2025-04', original_name: '2b.json', invoice_count: 41, uploaded_at: '2025-05-01T08:00:00', unreconciled: { b2ba: 3, cdnr: 1 } },
       ] }],
       ['GET', /\/clients\/c1\/uploads\?period=2025-03$/, { body: [] }],
     ]);
@@ -136,6 +136,8 @@ describe('client page uploads', () => {
     fireEvent.change(screen.getByLabelText('Return period'), { target: { value: '2025-04' } });
     expect(await screen.findByTestId('books-result')).toHaveTextContent(/58 invoices read from register\.xlsx for Apr 2025 · uploaded \S/);
     expect(screen.getByTestId('gstr2b-result')).toHaveTextContent('41 invoices read from 2b.json');
+    expect(screen.getByTestId('gstr2b-unreconciled')).toHaveTextContent('This 2B also has 3 amended invoices, 1 credit/debit notes.');
+    expect(screen.queryByTestId('books-unreconciled')).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('Return period'), { target: { value: '2025-03' } });
     await waitFor(() => expect(screen.queryByTestId('books-result')).not.toBeInTheDocument());

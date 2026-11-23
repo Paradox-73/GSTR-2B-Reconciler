@@ -52,6 +52,7 @@ p { margin: 6px 0; }
 .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .error { color: var(--bad); margin: 6px 0; }
 .ok { color: var(--ok); margin: 8px 0 0; }
+.warn { color: var(--warn); margin: 6px 0 0; }
 
 /* ---------- shell ---------- */
 
