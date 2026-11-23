@@ -123,3 +123,17 @@ def test_example_secrets_refused(monkeypatch):
     monkeypatch.setenv("JWT_SECRET", "CHANGE_ME_TO_AT_LEAST_32_RANDOM_CHARACTERS")
     with pytest.raises(RuntimeError, match="example value"):
         Settings().check_api()
+
+
+def test_overlong_password_is_401_not_500(client):
+    r = client.post(f"{V1}/auth/login", json={"email": "ca@example.com", "password": "a" * 100})
+    assert r.status_code == 401
+
+
+def test_overlong_admin_password_refused(monkeypatch):
+    from api.settings import Settings
+
+    monkeypatch.setenv("JWT_SECRET", "x" * 32)
+    monkeypatch.setenv("ADMIN_PASSWORD", "a" * 88)  # e.g. openssl rand -base64 64
+    with pytest.raises(RuntimeError, match="72 bytes"):
+        Settings().check_api()
