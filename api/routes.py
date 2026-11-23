@@ -380,6 +380,15 @@ def _side(i: InvoiceRow | None) -> list:
             float(i.igst), float(i.cgst), float(i.sgst), float(i.cess)]
 
 
+def _append(sheet, values: list) -> None:
+    """Every row goes in through here: names and invoice numbers are user text."""
+    # openpyxl refuses control characters, so strip them before the row goes in
+    sheet.append([ILLEGAL_CHARACTERS_RE.sub("", v) if isinstance(v, str) else v for v in values])
+    for cell in sheet[sheet.max_row]:
+        if cell.data_type == "f":  # text like "=HYPERLINK(...)" must stay text
+            cell.data_type = "s"
+
+
 @router.get("/runs/{run_id}/export")
 def export(run_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)):
     run = own_run(run_id, user, db)
@@ -387,14 +396,14 @@ def export(run_id: uuid.UUID, user: User = Depends(current_user), db: Session = 
     wb = Workbook()
     summary = wb.active
     summary.title = "Summary"
-    summary.append(["Client", client.name])
-    summary.append(["GSTIN", client.gstin])
-    summary.append(["Period", run.period])
-    summary.append(["Model version", run.model_version])
+    _append(summary, ["Client", client.name])
+    _append(summary, ["GSTIN", client.gstin])
+    _append(summary, ["Period", run.period])
+    _append(summary, ["Model version", run.model_version])
     summary.append([])
-    summary.append(["Category", "Count"])
+    _append(summary, ["Category", "Count"])
     for cat, n in sorted(((run.summary or {}).get("counts") or {}).items()):
-        summary.append([cat, n])
+        _append(summary, [cat, n])
     sheet = wb.create_sheet("Results")
     sheet.append(EXPORT_COLUMNS)
     for m in _run_results(run, db):
@@ -402,12 +411,7 @@ def export(run_id: uuid.UUID, user: User = Depends(current_user), db: Session = 
         itc = m.gstr2b.itc_available if m.gstr2b else None
         values = [m.category, ", ".join(m.reason_codes), m.score, last,
                   *_side(m.books), *_side(m.gstr2b), itc]
-        # openpyxl refuses control characters, so strip them before the row goes in
-        sheet.append([ILLEGAL_CHARACTERS_RE.sub("", v) if isinstance(v, str) else v
-                      for v in values])
-        for cell in sheet[sheet.max_row]:
-            if cell.data_type == "f":  # text like "=HYPERLINK(...)" must stay text
-                cell.data_type = "s"
+        _append(sheet, values)
     sheet.auto_filter.ref = sheet.dimensions
     sheet.freeze_panes = "A2"
     buf = io.BytesIO()
