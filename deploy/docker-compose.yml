@@ -124,6 +124,7 @@ services:
     environment:
       <<: *backend-env
       MODEL_POLL_SECONDS: "15"  # 60 in K8s; short here so a promotion shows up quickly
+    ports: ["127.0.0.1:9100:9100"]  # Prometheus metrics (api/worker.py)
     depends_on:
       migrate: {condition: service_completed_successfully}
       redis: {condition: service_healthy}
