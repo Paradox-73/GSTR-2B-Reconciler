@@ -67,3 +67,14 @@ def test_labels_from_decisions(client, auth, app):
     assert labels
     assert any(lb.same_invoice for lb in labels) and any(not lb.same_invoice for lb in labels)
     assert all(lb.books.source == "books" and lb.gstr2b.source == "2b" for lb in labels)
+
+
+def test_label_times_compare_in_utc():
+    from datetime import UTC, datetime, timedelta, timezone
+
+    from trainer.__main__ import as_utc
+
+    ist = timezone(timedelta(hours=5, minutes=30))
+    assert as_utc(datetime(2025, 4, 1, 10, 0, tzinfo=ist)) == datetime(2025, 4, 1, 4, 30,
+                                                                       tzinfo=UTC)
+    assert as_utc(datetime(2025, 4, 1, 10, 0)) == datetime(2025, 4, 1, 10, 0, tzinfo=UTC)
